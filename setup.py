@@ -6,7 +6,7 @@ setuptools.setup(name='attentionocr',
       author='Alle Veenstra',
       author_email='alle.veenstra@gmail.com',
       url='https://www.github.org/alleveenstra/attentionocr/',
-      packages=setuptools.find_packages(),
+      packages=setuptools.find_packages(include=['attentionocr', 'attentionocr.*']),
       classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
