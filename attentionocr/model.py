@@ -37,13 +37,11 @@ class KerasAttentionOCR:
         self.inference_decoder = self._build_inference_decoder(decoder_dense, decoder_inputs, decoder_lstm)
 
     def _build_inference_decoder(self, decoder_dense, decoder_inputs, decoder_lstm):
-        input_forward_h = Input(shape=(self.latent_dim,))
-        input_forward_c = Input(shape=(self.latent_dim,))
-        input_backward_h = Input(shape=(self.latent_dim,))
-        input_backward_c = Input(shape=(self.latent_dim,))
-        decoder_states_inputs = [input_forward_h, input_forward_c, input_backward_h, input_backward_c]
-        decoder_outputs, forward_h, forward_c, backward_h, backward_c = decoder_lstm(decoder_inputs, initial_state=decoder_states_inputs)
-        decoder_states = [forward_h, forward_c, backward_h, backward_c]
+        input_h = Input(shape=(self.latent_dim,))
+        input_c = Input(shape=(self.latent_dim,))
+        decoder_states_inputs = [input_h, input_c]
+        decoder_outputs, state_h, state_c = decoder_lstm(decoder_inputs, initial_state=decoder_states_inputs)
+        decoder_states = [state_h, state_c]
         decoder_outputs = decoder_dense(decoder_outputs)
         inference_decoder = Model([decoder_inputs] + decoder_states_inputs, [decoder_outputs] + decoder_states)
         return inference_decoder
@@ -59,15 +57,15 @@ class KerasAttentionOCR:
         conv = MaxPooling2D((2, 2))(conv)
         conv = BatchNormalization(axis=3)(conv)
         conv = TimeDistributed(Flatten())(conv)
-        encoder = Bidirectional(LSTM(self.latent_dim, return_state=True))
-        _, forward_h, forward_c, backward_h, backward_c = encoder(conv)
-        encoder_states = [forward_h, forward_c, backward_h, backward_c]
+        encoder = Bidirectional(LSTM(self.latent_dim, return_sequences=True))(conv)
+        _, state_h, state_c = LSTM(self.latent_dim, return_state=True)(encoder)
+        encoder_states = [state_h, state_c]
         return encoder_states
 
     def _build_decoder(self, decoder_inputs, encoder_states):
         # state is used during inference, but ignored for now
-        decoder_lstm = Bidirectional(LSTM(self.latent_dim, return_sequences=True, return_state=True))
-        activations, _, _, _, _ = decoder_lstm(decoder_inputs, initial_state=encoder_states)
+        decoder_lstm = LSTM(self.latent_dim, return_sequences=True, return_state=True)
+        activations, _, _ = decoder_lstm(decoder_inputs, initial_state=encoder_states)
 
         # attention
         attention = TimeDistributed(Dense(1, activation='tanh'))(activations)
@@ -106,8 +104,8 @@ class KerasAttentionOCR:
 
             text = ""
             while True:
-                output_tokens, forward_h, forward_c, backward_h, backward_c = self.inference_decoder.predict([target_seq] + states_value)
-                states_value = [forward_h, forward_c, backward_h, backward_c]  # loop the state back for the next sample
+                output_tokens, state_h, state_c = self.inference_decoder.predict([target_seq] + states_value)
+                states_value = [state_h, state_c]  # loop the state back for the next sample
 
                 # greedy search
                 sample_index = np.argmax(output_tokens[0, -1, :])
