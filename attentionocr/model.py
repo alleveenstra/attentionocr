@@ -1,6 +1,6 @@
 import tensorflow.python.keras.backend as K
 from tensorflow.python.keras import Input
-from tensorflow.python.keras.layers import Conv2D, Activation, RepeatVector, Permute, LSTM, Multiply, BatchNormalization, Flatten, Dense, MaxPooling2D, TimeDistributed
+from tensorflow.python.keras.layers import Bidirectional, Concatenate, Conv2D, Activation, RepeatVector, Permute, LSTM, Multiply, BatchNormalization, Flatten, Dense, MaxPooling2D, TimeDistributed
 from tensorflow.python.keras.models import Model
 
 import numpy as np
@@ -37,11 +37,13 @@ class KerasAttentionOCR:
         self.inference_decoder = self._build_inference_decoder(decoder_dense, decoder_inputs, decoder_lstm)
 
     def _build_inference_decoder(self, decoder_dense, decoder_inputs, decoder_lstm):
-        decoder_state_input_h = Input(shape=(self.latent_dim,))
-        decoder_state_input_c = Input(shape=(self.latent_dim,))
-        decoder_states_inputs = [decoder_state_input_h, decoder_state_input_c]
-        decoder_outputs, state_h, state_c = decoder_lstm(decoder_inputs, initial_state=decoder_states_inputs)
-        decoder_states = [state_h, state_c]
+        input_forward_h = Input(shape=(self.latent_dim,))
+        input_forward_c = Input(shape=(self.latent_dim,))
+        input_backward_h = Input(shape=(self.latent_dim,))
+        input_backward_c = Input(shape=(self.latent_dim,))
+        decoder_states_inputs = [input_forward_h, input_forward_c, input_backward_h, input_backward_c]
+        decoder_outputs, forward_h, forward_c, backward_h, backward_c = decoder_lstm(decoder_inputs, initial_state=decoder_states_inputs)
+        decoder_states = [forward_h, forward_c, backward_h, backward_c]
         decoder_outputs = decoder_dense(decoder_outputs)
         inference_decoder = Model([decoder_inputs] + decoder_states_inputs, [decoder_outputs] + decoder_states)
         return inference_decoder
@@ -57,25 +59,25 @@ class KerasAttentionOCR:
         conv = MaxPooling2D((2, 2))(conv)
         conv = BatchNormalization(axis=3)(conv)
         conv = TimeDistributed(Flatten())(conv)
-        encoder = LSTM(self.latent_dim, return_state=True)
-        _, state_h, state_c = encoder(conv)
-        encoder_states = [state_h, state_c]
+        encoder = Bidirectional(LSTM(self.latent_dim, return_state=True))
+        _, forward_h, forward_c, backward_h, backward_c = encoder(conv)
+        encoder_states = [forward_h, forward_c, backward_h, backward_c]
         return encoder_states
 
     def _build_decoder(self, decoder_inputs, encoder_states):
         # state is used during inference, but ignored for now
-        decoder_lstm = LSTM(self.latent_dim, return_sequences=True, return_state=True)
-        activations, _, _ = decoder_lstm(decoder_inputs, initial_state=encoder_states)
+        decoder_lstm = Bidirectional(LSTM(self.latent_dim, return_sequences=True, return_state=True))
+        activations, _, _, _, _ = decoder_lstm(decoder_inputs, initial_state=encoder_states)
 
         # attention
         attention = TimeDistributed(Dense(1, activation='tanh'))(activations)
         attention = K.squeeze(attention, axis=2)
         attention = Activation('softmax')(attention)
-        attention = RepeatVector(self.latent_dim)(attention)
+        attention = RepeatVector(activations.shape[-1])(attention)
         attention = Permute([2, 1])(attention)
 
         applied_attention = Multiply()([activations, attention])
-        # applied_attention = K.sum(sent_representation, axis=2)
+        # applied_attention = K.sum(applied_attention, axis=2)
         decoder_dense = Dense(self.num_tokens, activation='softmax')
         decoder_outputs = decoder_dense(applied_attention)
         return decoder_dense, decoder_lstm, decoder_outputs
@@ -104,8 +106,8 @@ class KerasAttentionOCR:
 
             text = ""
             while True:
-                output_tokens, h, c = self.inference_decoder.predict([target_seq] + states_value)
-                states_value = [h, c]  # update the state for the next sample
+                output_tokens, forward_h, forward_c, backward_h, backward_c = self.inference_decoder.predict([target_seq] + states_value)
+                states_value = [forward_h, forward_c, backward_h, backward_c]  # loop the state back for the next sample
 
                 # greedy search
                 sample_index = np.argmax(output_tokens[0, -1, :])
