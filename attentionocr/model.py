@@ -10,14 +10,15 @@ from .vectorizer import VectorizerOCR
 
 class KerasAttentionOCR:
 
-    def __init__(self, vectorizer: VectorizerOCR):
+    def __init__(self, vectorizer: VectorizerOCR, latent_dim=256, image_height=32, image_width=144, bidirectional_encoder=False):
         self.vectorizer = vectorizer
         self.num_tokens = len(vectorizer.tokens())
         self.max_input_txt_size = self.vectorizer.max_txt_length
         self.max_output_txt_size = self.vectorizer.max_txt_length + 2
-        self.latent_dim = 256
-        self.image_height = 32
-        self.image_width = 144
+        self.latent_dim = latent_dim
+        self.image_height = image_height
+        self.image_width = image_width
+        self.bidirectional_encoder = bidirectional_encoder
         self._build_model()
 
     def _build_model(self):
@@ -37,27 +38,28 @@ class KerasAttentionOCR:
         self.inference_decoder = self._build_inference_decoder(decoder_dense, decoder_inputs, decoder_lstm)
 
     def _build_inference_decoder(self, decoder_dense, decoder_inputs, decoder_lstm):
-        input_h = Input(shape=(self.latent_dim,))
-        input_c = Input(shape=(self.latent_dim,))
-        decoder_states_inputs = [input_h, input_c]
-        decoder_outputs, state_h, state_c = decoder_lstm(decoder_inputs, initial_state=decoder_states_inputs)
-        decoder_states = [state_h, state_c]
+        hidden_state_input = Input(shape=(self.latent_dim,), name="decoder_hidden_state")
+        cell_state_input = Input(shape=(self.latent_dim,), name="decoder_cell_state")
+        decoder_states_inputs = [hidden_state_input, cell_state_input]
+        decoder_outputs, hidden_state, cell_state = decoder_lstm(decoder_inputs, initial_state=decoder_states_inputs)
+        decoder_states = [hidden_state, cell_state]
         decoder_outputs = decoder_dense(decoder_outputs)
         inference_decoder = Model([decoder_inputs] + decoder_states_inputs, [decoder_outputs] + decoder_states)
         return inference_decoder
 
     def _build_encoder(self, input_image_tensor):
-        conv = Conv2D(32, (3, 3), padding='same', activation='relu')(input_image_tensor)
-        conv = MaxPooling2D((2, 2))(conv)
-        conv = BatchNormalization(axis=3)(conv)
-        conv = Conv2D(64, (3, 3), padding='same', activation='relu')(conv)
-        conv = MaxPooling2D((2, 2))(conv)
-        conv = BatchNormalization(axis=3)(conv)
-        conv = Conv2D(128, (3, 3), padding='same', activation='relu')(conv)
-        conv = MaxPooling2D((2, 2))(conv)
-        conv = BatchNormalization(axis=3)(conv)
-        conv = TimeDistributed(Flatten())(conv)
-        encoder = Bidirectional(LSTM(128, return_sequences=True))(conv)
+        encoder = Conv2D(32, (3, 3), padding='same', activation='relu')(input_image_tensor)
+        encoder = MaxPooling2D((2, 2))(encoder)
+        encoder = BatchNormalization(axis=3)(encoder)
+        encoder = Conv2D(64, (3, 3), padding='same', activation='relu')(encoder)
+        encoder = MaxPooling2D((2, 2))(encoder)
+        encoder = BatchNormalization(axis=3)(encoder)
+        encoder = Conv2D(128, (3, 3), padding='same', activation='relu')(encoder)
+        encoder = MaxPooling2D((2, 2))(encoder)
+        encoder = BatchNormalization(axis=3)(encoder)
+        encoder = TimeDistributed(Flatten())(encoder)
+        if self.bidirectional_encoder:
+            encoder = Bidirectional(LSTM(self.latent_dim // 2, return_sequences=True))(encoder)
         _, state_h, state_c = LSTM(self.latent_dim, return_state=True)(encoder)
         encoder_states = [state_h, state_c]
         return encoder_states

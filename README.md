@@ -1,6 +1,6 @@
 # Keras Attention OCR
 
-A stable, readable and maintainable of Attention OCR in Tensorflow's Keras.
+A stable, readable and maintainable of Attention OCR in Keras.
 
 This sequence to sequence OCR model aims to provide a stable, readable and maintainable implementation of Attention OCR.
 Some of the open source models are implemented in a way that readability suffers.
@@ -9,7 +9,6 @@ This makes some of the OCR implementations hard to change and maintain.
 
 ## To do
 
-* Make the LSTM block bidirectional
 * Name all input and output tensors 
 * Make parameters (latent_dim, input height and width, output length) configurable
 * Scale the images
