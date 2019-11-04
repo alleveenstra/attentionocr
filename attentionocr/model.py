@@ -1,6 +1,6 @@
 import tensorflow.python.keras.backend as K
 from tensorflow.python.keras import Input
-from tensorflow.python.keras.layers import Conv2D, Activation, RepeatVector, Permute, LSTM, Multiply, BatchNormalization, Flatten, Dense, MaxPooling2D, TimeDistributed
+from tensorflow.python.keras.layers import Bidirectional, Concatenate, Conv2D, Activation, RepeatVector, Permute, LSTM, Multiply, BatchNormalization, Flatten, Dense, MaxPooling2D, TimeDistributed
 from tensorflow.python.keras.models import Model
 
 import numpy as np
@@ -10,14 +10,15 @@ from .vectorizer import VectorizerOCR
 
 class KerasAttentionOCR:
 
-    def __init__(self, vectorizer: VectorizerOCR):
+    def __init__(self, vectorizer: VectorizerOCR, latent_dim=256, image_height=32, image_width=144, bidirectional_encoder=False):
         self.vectorizer = vectorizer
         self.num_tokens = len(vectorizer.tokens())
         self.max_input_txt_size = self.vectorizer.max_txt_length
         self.max_output_txt_size = self.vectorizer.max_txt_length + 2
-        self.latent_dim = 256
-        self.image_height = 32
-        self.image_width = 144
+        self.latent_dim = latent_dim
+        self.image_height = image_height
+        self.image_width = image_width
+        self.bidirectional_encoder = bidirectional_encoder
         self._build_model()
 
     def _build_model(self):
@@ -37,28 +38,29 @@ class KerasAttentionOCR:
         self.inference_decoder = self._build_inference_decoder(decoder_dense, decoder_inputs, decoder_lstm)
 
     def _build_inference_decoder(self, decoder_dense, decoder_inputs, decoder_lstm):
-        decoder_state_input_h = Input(shape=(self.latent_dim,))
-        decoder_state_input_c = Input(shape=(self.latent_dim,))
-        decoder_states_inputs = [decoder_state_input_h, decoder_state_input_c]
-        decoder_outputs, state_h, state_c = decoder_lstm(decoder_inputs, initial_state=decoder_states_inputs)
-        decoder_states = [state_h, state_c]
+        hidden_state_input = Input(shape=(self.latent_dim,), name="decoder_hidden_state")
+        cell_state_input = Input(shape=(self.latent_dim,), name="decoder_cell_state")
+        decoder_states_inputs = [hidden_state_input, cell_state_input]
+        decoder_outputs, hidden_state, cell_state = decoder_lstm(decoder_inputs, initial_state=decoder_states_inputs)
+        decoder_states = [hidden_state, cell_state]
         decoder_outputs = decoder_dense(decoder_outputs)
         inference_decoder = Model([decoder_inputs] + decoder_states_inputs, [decoder_outputs] + decoder_states)
         return inference_decoder
 
     def _build_encoder(self, input_image_tensor):
-        conv = Conv2D(32, (3, 3), padding='same', activation='relu')(input_image_tensor)
-        conv = MaxPooling2D((2, 2))(conv)
-        conv = BatchNormalization(axis=3)(conv)
-        conv = Conv2D(64, (3, 3), padding='same', activation='relu')(conv)
-        conv = MaxPooling2D((2, 2))(conv)
-        conv = BatchNormalization(axis=3)(conv)
-        conv = Conv2D(128, (3, 3), padding='same', activation='relu')(conv)
-        conv = MaxPooling2D((2, 2))(conv)
-        conv = BatchNormalization(axis=3)(conv)
-        conv = TimeDistributed(Flatten())(conv)
-        encoder = LSTM(self.latent_dim, return_state=True)
-        _, state_h, state_c = encoder(conv)
+        encoder = Conv2D(32, (3, 3), padding='same', activation='relu')(input_image_tensor)
+        encoder = MaxPooling2D((2, 2))(encoder)
+        encoder = BatchNormalization(axis=3)(encoder)
+        encoder = Conv2D(64, (3, 3), padding='same', activation='relu')(encoder)
+        encoder = MaxPooling2D((2, 2))(encoder)
+        encoder = BatchNormalization(axis=3)(encoder)
+        encoder = Conv2D(128, (3, 3), padding='same', activation='relu')(encoder)
+        encoder = MaxPooling2D((2, 2))(encoder)
+        encoder = BatchNormalization(axis=3)(encoder)
+        encoder = TimeDistributed(Flatten())(encoder)
+        if self.bidirectional_encoder:
+            encoder = Bidirectional(LSTM(self.latent_dim // 2, return_sequences=True))(encoder)
+        _, state_h, state_c = LSTM(self.latent_dim, return_state=True)(encoder)
         encoder_states = [state_h, state_c]
         return encoder_states
 
@@ -71,11 +73,11 @@ class KerasAttentionOCR:
         attention = TimeDistributed(Dense(1, activation='tanh'))(activations)
         attention = K.squeeze(attention, axis=2)
         attention = Activation('softmax')(attention)
-        attention = RepeatVector(self.latent_dim)(attention)
+        attention = RepeatVector(activations.shape[-1])(attention)
         attention = Permute([2, 1])(attention)
 
         applied_attention = Multiply()([activations, attention])
-        # applied_attention = K.sum(sent_representation, axis=2)
+        # applied_attention = K.sum(applied_attention, axis=2)
         decoder_dense = Dense(self.num_tokens, activation='softmax')
         decoder_outputs = decoder_dense(applied_attention)
         return decoder_dense, decoder_lstm, decoder_outputs
@@ -104,8 +106,8 @@ class KerasAttentionOCR:
 
             text = ""
             while True:
-                output_tokens, h, c = self.inference_decoder.predict([target_seq] + states_value)
-                states_value = [h, c]  # update the state for the next sample
+                output_tokens, state_h, state_c = self.inference_decoder.predict([target_seq] + states_value)
+                states_value = [state_h, state_c]  # loop the state back for the next sample
 
                 # greedy search
                 sample_index = np.argmax(output_tokens[0, -1, :])
