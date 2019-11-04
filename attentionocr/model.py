@@ -57,7 +57,7 @@ class KerasAttentionOCR:
         conv = MaxPooling2D((2, 2))(conv)
         conv = BatchNormalization(axis=3)(conv)
         conv = TimeDistributed(Flatten())(conv)
-        encoder = Bidirectional(LSTM(self.latent_dim, return_sequences=True))(conv)
+        encoder = Bidirectional(LSTM(128, return_sequences=True))(conv)
         _, state_h, state_c = LSTM(self.latent_dim, return_state=True)(encoder)
         encoder_states = [state_h, state_c]
         return encoder_states
