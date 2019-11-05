@@ -1,9 +1,11 @@
 import tensorflow.python.keras.backend as K
 from tensorflow.python.keras import Input
-from tensorflow.python.keras.layers import Bidirectional, Concatenate, Conv2D, Activation, RepeatVector, Permute, LSTM, Multiply, BatchNormalization, Flatten, Dense, MaxPooling2D, TimeDistributed
+from tensorflow.python.keras.layers import Bidirectional, Concatenate, Conv2D, Activation, RepeatVector, Permute, LSTM, Multiply, BatchNormalization, Flatten, Dense, MaxPooling2D, TimeDistributed, Dot, Softmax, Lambda
 from tensorflow.python.keras.models import Model
+import tensorflow as tf
 
 import numpy as np
+# from tensorflow.python.keras.layers.advanced_activations import Softmax
 
 from .vectorizer import VectorizerOCR
 
@@ -23,10 +25,10 @@ class KerasAttentionOCR:
 
     def _build_model(self):
         encoder_inputs = Input(shape=(self.image_height, self.image_width, 1), name="input_encoder")
-        decoder_inputs = Input(shape=(None, self.num_tokens,), name="input_decoder")
+        decoder_inputs = Input(shape=(self.max_input_txt_size, self.num_tokens,), name="input_decoder")
 
-        encoder_states = self._build_encoder(encoder_inputs)
-        decoder_dense, decoder_lstm, decoder_outputs = self._build_decoder(decoder_inputs, encoder_states)
+        encoder_hidden_states, encoder_states = self._build_encoder(encoder_inputs)
+        decoder_dense, decoder_lstm, decoder_outputs = self._build_decoder(decoder_inputs, encoder_hidden_states, encoder_states)
 
         # training_model: encoder_inputs, decoder_inputs => decoder_outputs
         self.training_model = Model([encoder_inputs, decoder_inputs], decoder_outputs)
@@ -34,6 +36,7 @@ class KerasAttentionOCR:
         self.training_model.summary()
 
         # inference_encoder: encoder_inputs => encoder_states
+        print(encoder_states)
         self.inference_encoder = Model(encoder_inputs, encoder_states)
         self.inference_decoder = self._build_inference_decoder(decoder_dense, decoder_inputs, decoder_lstm)
 
@@ -48,38 +51,60 @@ class KerasAttentionOCR:
         return inference_decoder
 
     def _build_encoder(self, input_image_tensor):
-        encoder = Conv2D(32, (3, 3), padding='same', activation='relu')(input_image_tensor)
-        encoder = MaxPooling2D((2, 2))(encoder)
-        encoder = BatchNormalization(axis=3)(encoder)
-        encoder = Conv2D(64, (3, 3), padding='same', activation='relu')(encoder)
-        encoder = MaxPooling2D((2, 2))(encoder)
-        encoder = BatchNormalization(axis=3)(encoder)
-        encoder = Conv2D(128, (3, 3), padding='same', activation='relu')(encoder)
-        encoder = MaxPooling2D((2, 2))(encoder)
-        encoder = BatchNormalization(axis=3)(encoder)
-        encoder = TimeDistributed(Flatten())(encoder)
-        if self.bidirectional_encoder:
-            encoder = Bidirectional(LSTM(self.latent_dim // 2, return_sequences=True))(encoder)
-        _, state_h, state_c = LSTM(self.latent_dim, return_state=True)(encoder)
-        encoder_states = [state_h, state_c]
-        return encoder_states
+        encoder = Conv2D(44, (32, 1), padding='valid', activation='relu')(input_image_tensor)
+        assert encoder.shape[1] == 1
+        encoder = K.squeeze(encoder, axis=1)
+        activations, state_h, state_c = LSTM(self.latent_dim, return_sequences=True, return_state=True)(encoder)
+        print(activations)
+        print(state_h.shape, state_c.shape)
 
-    def _build_decoder(self, decoder_inputs, encoder_states):
-        # state is used during inference, but ignored for now
+        return activations, [state_h, state_c]
+
+    def _build_decoder(self, decoder_inputs, encoder_hidden_states, encoder_state):
+
+
+        print('encoder_state[0]', encoder_state[0].shape)
+
+        # attn = Attention()([encoder_hidden_states, aap])  # maybe other way around
+
+        # https://papers.nips.cc/paper/7181-attention-is-all-you-need.pdf
+        Q = Dense(self.latent_dim)(decoder_inputs)
+        Key = encoder_hidden_states
+        V = encoder_hidden_states
+        KT = Permute([2, 1])(Key)
+        QKT = Dot(axes=(2, 1))([Q, KT])
+        AQKT = Softmax(axis=1)(QKT)
+        AQKTV = Dot(axes=(2, 1))([AQKT, V])
+
+        # # attention
+        # attention = TimeDistributed(Dense(1, activation='tanh'))(encoder_hidden_states)
+        # attention = K.squeeze(attention, axis=2)
+        # attention = Activation('softmax')(attention)
+        # attention = RepeatVector(activations.shape[-1])(attention)
+        # attention = Permute([2, 1])(attention)
+        #
+        # applied_attention = Multiply()([activations, attention])
+        # # applied_attention = K.sum(applied_attention, axis=2)
+
         decoder_lstm = LSTM(self.latent_dim, return_sequences=True, return_state=True)
-        activations, _, _ = decoder_lstm(decoder_inputs, initial_state=encoder_states)
 
-        # attention
-        attention = TimeDistributed(Dense(1, activation='tanh'))(activations)
-        attention = K.squeeze(attention, axis=2)
-        attention = Activation('softmax')(attention)
-        attention = RepeatVector(activations.shape[-1])(attention)
-        attention = Permute([2, 1])(attention)
+        activations = []
+        cell_state = tf.convert_to_tensor(encoder_state[1])
+        for i in range(self.max_input_txt_size):
+            state_h = Lambda(lambda x: x)(AQKTV[:, i, :])
+            inpt = tf.expand_dims(decoder_inputs[:, i, :], axis=1)
+            act, _, cell_state = decoder_lstm(inpt, initial_state=[state_h, cell_state])
+            print('act', act.shape)
+            activations.append(act)
+        activations = Concatenate(axis=1)(activations)
 
-        applied_attention = Multiply()([activations, attention])
-        # applied_attention = K.sum(applied_attention, axis=2)
+        print('activations.shape', activations.shape)
+
         decoder_dense = Dense(self.num_tokens, activation='softmax')
-        decoder_outputs = decoder_dense(applied_attention)
+        decoder_outputs = decoder_dense(activations)
+
+        print('#', decoder_outputs.shape)
+
         return decoder_dense, decoder_lstm, decoder_outputs
 
     def fit(self, images: list, texts: list, epochs: int = 10, batch_size: int = None, validation_split=0.):
