@@ -25,10 +25,15 @@ class KerasAttentionOCR:
 
     def _build_model(self):
         encoder_inputs = Input(shape=(self.image_height, self.image_width, 1), name="input_encoder")
-        decoder_inputs = Input(shape=(self.max_input_txt_size, self.num_tokens,), name="input_decoder")
+        decoder_inputs = Input(shape=(None, self.num_tokens,), name="input_decoder")
 
         encoder_hidden_states, encoder_states = self._build_encoder(encoder_inputs)
-        decoder_dense, decoder_lstm, decoder_outputs = self._build_decoder(decoder_inputs, encoder_hidden_states, encoder_states)
+
+        attention = Attention(self.latent_dim)
+
+        context_vector, _ = attention(decoder_inputs, encoder_hidden_states)
+
+        decoder_dense, decoder_lstm, decoder_outputs = self._build_decoder(decoder_inputs, context_vector, encoder_states)
 
         # training_model: encoder_inputs, decoder_inputs => decoder_outputs
         self.training_model = Model([encoder_inputs, decoder_inputs], decoder_outputs)
@@ -36,74 +41,38 @@ class KerasAttentionOCR:
         self.training_model.summary()
 
         # inference_encoder: encoder_inputs => encoder_states
-        print(encoder_states)
         self.inference_encoder = Model(encoder_inputs, encoder_states)
-        self.inference_decoder = self._build_inference_decoder(decoder_dense, decoder_inputs, decoder_lstm)
+        self.inference_decoder = self._build_inference_decoder(encoder_inputs, decoder_dense, decoder_inputs, decoder_lstm, attention, encoder_states, encoder_hidden_states)
 
-    def _build_inference_decoder(self, decoder_dense, decoder_inputs, decoder_lstm):
-        hidden_state_input = Input(shape=(self.latent_dim,), name="decoder_hidden_state")
-        cell_state_input = Input(shape=(self.latent_dim,), name="decoder_cell_state")
-        decoder_states_inputs = [hidden_state_input, cell_state_input]
-        decoder_outputs, hidden_state, cell_state = decoder_lstm(decoder_inputs, initial_state=decoder_states_inputs)
-        decoder_states = [hidden_state, cell_state]
-        decoder_outputs = decoder_dense(decoder_outputs)
-        inference_decoder = Model([decoder_inputs] + decoder_states_inputs, [decoder_outputs] + decoder_states)
-        return inference_decoder
+    def _build_inference_decoder(self, encoder_inputs, decoder_dense, decoder_inputs, decoder_lstm, attention, encoder_states, encoder_hidden_states):
+        predictions = []
+        prediction = decoder_inputs
+        state_h, state_c = encoder_states
+        for i in range(self.max_input_txt_size):
+            context_vectors, _ = attention(prediction, encoder_hidden_states)
+            x = Concatenate(axis=2)([prediction, context_vectors])
+            decoder_output, state_h, state_c = decoder_lstm(x, initial_state=[state_h, state_c])
+            prediction = decoder_dense(decoder_output)
+            predictions.append(prediction)
+        probabilities = Concatenate(axis=1)(predictions)
+        return tf.keras.Model([encoder_inputs, decoder_inputs], probabilities)
 
     def _build_encoder(self, input_image_tensor):
         encoder = Conv2D(44, (32, 1), padding='valid', activation='relu')(input_image_tensor)
         assert encoder.shape[1] == 1
         encoder = K.squeeze(encoder, axis=1)
         activations, state_h, state_c = LSTM(self.latent_dim, return_sequences=True, return_state=True)(encoder)
-        print(activations)
-        print(state_h.shape, state_c.shape)
-
         return activations, [state_h, state_c]
 
-    def _build_decoder(self, decoder_inputs, encoder_hidden_states, encoder_state):
-
-
-        print('encoder_state[0]', encoder_state[0].shape)
-
-        # attn = Attention()([encoder_hidden_states, aap])  # maybe other way around
-
-        # https://papers.nips.cc/paper/7181-attention-is-all-you-need.pdf
-        Q = Dense(self.latent_dim)(decoder_inputs)
-        Key = encoder_hidden_states
-        V = encoder_hidden_states
-        KT = Permute([2, 1])(Key)
-        QKT = Dot(axes=(2, 1))([Q, KT])
-        AQKT = Softmax(axis=1)(QKT)
-        AQKTV = Dot(axes=(2, 1))([AQKT, V])
-
-        # # attention
-        # attention = TimeDistributed(Dense(1, activation='tanh'))(encoder_hidden_states)
-        # attention = K.squeeze(attention, axis=2)
-        # attention = Activation('softmax')(attention)
-        # attention = RepeatVector(activations.shape[-1])(attention)
-        # attention = Permute([2, 1])(attention)
-        #
-        # applied_attention = Multiply()([activations, attention])
-        # # applied_attention = K.sum(applied_attention, axis=2)
+    def _build_decoder(self, decoder_inputs, context_vector, encoder_state):
 
         decoder_lstm = LSTM(self.latent_dim, return_sequences=True, return_state=True)
 
-        activations = []
-        cell_state = tf.convert_to_tensor(encoder_state[1])
-        for i in range(self.max_input_txt_size):
-            state_h = Lambda(lambda x: x)(AQKTV[:, i, :])
-            inpt = tf.expand_dims(decoder_inputs[:, i, :], axis=1)
-            act, _, cell_state = decoder_lstm(inpt, initial_state=[state_h, cell_state])
-            print('act', act.shape)
-            activations.append(act)
-        activations = Concatenate(axis=1)(activations)
-
-        print('activations.shape', activations.shape)
+        x = Concatenate(axis=2)([decoder_inputs, context_vector])
+        activations, _, _ = decoder_lstm(x, initial_state=encoder_state)
 
         decoder_dense = Dense(self.num_tokens, activation='softmax')
         decoder_outputs = decoder_dense(activations)
-
-        print('#', decoder_outputs.shape)
 
         return decoder_dense, decoder_lstm, decoder_outputs
 
@@ -124,25 +93,35 @@ class KerasAttentionOCR:
         for image in images:
             # feed the input, retrieve encoder state vectors
             image = np.expand_dims(image, axis=0)
-            states_value = self.inference_encoder.predict(image)
+            # states_value = self.inference_encoder.predict(image)
 
             target_seq = np.zeros((1, 1, self.num_tokens))
             target_seq[0, 0, self.vectorizer.character_index[self.vectorizer.SOS]] = 1.
 
-            text = ""
-            while True:
-                output_tokens, state_h, state_c = self.inference_decoder.predict([target_seq] + states_value)
-                states_value = [state_h, state_c]  # loop the state back for the next sample
+            pred = self.inference_decoder.predict([image] + [target_seq])
 
-                # greedy search
-                sample_index = np.argmax(output_tokens[0, -1, :])
+            text = ''
+            samples = np.argmax(pred, axis=2)[0]
+            for sample_index in samples:
                 sample = self.vectorizer.character_reverse_index[sample_index]
                 if sample == self.vectorizer.EOS or sample == self.vectorizer.PAD or len(text) > self.max_output_txt_size:
                     break
                 text += sample
-
-                target_seq = np.zeros((1, 1, self.num_tokens))
-                target_seq[0, 0, sample_index] = 1.
-
             texts.append(text)
         return texts
+
+
+class Attention:
+    def __init__(self, units: int):
+        # https://papers.nips.cc/paper/7181-attention-is-all-you-need.pdf
+        self.projection = Dense(units, activation="sigmoid")
+
+    def __call__(self, decoder_inputs, encoder_hidden_states):
+        query = self.projection(decoder_inputs)
+        key = encoder_hidden_states
+        value = encoder_hidden_states
+        key = Permute([2, 1])(key)
+        attention = Dot(axes=(2, 1))([query, key])
+        attention_weights = Softmax(axis=1)(attention)
+        context_vector = Dot(axes=(2, 1))([attention_weights, value])
+        return context_vector, attention_weights
