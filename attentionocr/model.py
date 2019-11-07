@@ -1,6 +1,6 @@
 import tensorflow.python.keras.backend as K
 from tensorflow.python.keras import Input
-from tensorflow.python.keras.layers import Bidirectional, Concatenate, Conv2D, Activation, RepeatVector, Permute, LSTM, Multiply, BatchNormalization, Flatten, Dense, MaxPooling2D, TimeDistributed, Dot, Softmax, Lambda
+from tensorflow.python.keras.layers import MaxPool2D, Bidirectional, Concatenate, Conv2D, Activation, RepeatVector, Permute, LSTM, Multiply, BatchNormalization, Flatten, Dense, MaxPooling2D, TimeDistributed, Dot, Softmax, Lambda
 from tensorflow.python.keras.models import Model
 import tensorflow as tf
 
@@ -58,7 +58,20 @@ class KerasAttentionOCR:
         return tf.keras.Model([encoder_inputs, decoder_inputs], probabilities)
 
     def _build_encoder(self, input_image_tensor):
-        encoder = Conv2D(44, (32, 1), padding='valid', activation='relu')(input_image_tensor)
+        encoder = input_image_tensor
+        encoder = Conv2D(64, (3, 3), padding='same', activation='relu')(encoder)
+        encoder = MaxPool2D(strides=(2, 2), padding='valid')(encoder)
+        encoder = BatchNormalization()(encoder)
+        encoder = Conv2D(128, (3, 3), padding='same', activation='relu')(encoder)
+        encoder = MaxPool2D(strides=(2, 2), padding='valid')(encoder)
+        encoder = BatchNormalization()(encoder)
+        encoder = Conv2D(256, (3, 3), padding='same', activation='relu')(encoder)
+        encoder = MaxPool2D(strides=(2, 2), padding='valid')(encoder)
+        encoder = BatchNormalization()(encoder)
+        encoder = Conv2D(256, (3, 3), padding='valid', activation='relu')(encoder)
+        encoder = MaxPool2D(strides=(2, 2), padding='valid')(encoder)
+        encoder = BatchNormalization()(encoder)
+
         assert encoder.shape[1] == 1
         encoder = K.squeeze(encoder, axis=1)
         activations, state_h, state_c = LSTM(self.latent_dim, return_sequences=True, return_state=True)(encoder)
