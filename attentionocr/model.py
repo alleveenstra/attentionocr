@@ -1,93 +1,73 @@
 import tensorflow.python.keras.backend as K
-from tensorflow.python.keras import Input
+from tensorflow.python.keras import Input, Sequential
 from tensorflow.python.keras.layers import MaxPool2D, Bidirectional, Concatenate, Conv2D, Activation, RepeatVector, Permute, LSTM, Multiply, BatchNormalization, Flatten, Dense, MaxPooling2D, TimeDistributed, Dot, Softmax, Lambda
 from tensorflow.python.keras.models import Model
 import tensorflow as tf
 
 import numpy as np
-# from tensorflow.python.keras.layers.advanced_activations import Softmax
 
 from .vectorizer import VectorizerOCR
 
 
 class KerasAttentionOCR:
 
-    def __init__(self, vectorizer: VectorizerOCR, latent_dim=256, image_height=32, image_width=144, bidirectional_encoder=False):
+    def __init__(self, vectorizer: VectorizerOCR, units=256, image_height=32, image_width=144):
         self.vectorizer = vectorizer
         self.num_tokens = len(vectorizer.tokens())
         self.max_input_txt_size = self.vectorizer.max_txt_length
         self.max_output_txt_size = self.vectorizer.max_txt_length + 2
-        self.latent_dim = latent_dim
         self.image_height = image_height
         self.image_width = image_width
-        self.bidirectional_encoder = bidirectional_encoder
-        self._build_model()
 
-    def _build_model(self):
-        encoder_inputs = Input(shape=(self.image_height, self.image_width, 1), name="input_encoder")
-        decoder_inputs = Input(shape=(None, self.num_tokens,), name="input_decoder")
+        self.units = units
 
-        encoder_hidden_states, encoder_states = self._build_encoder(encoder_inputs)
+        # Build the model.
+        self.encoder_input = Input(shape=(self.image_height, None, 1))
+        self.decoder_input = Input(shape=(None, self.num_tokens))
+        self.encoder = Encoder(self.units)
+        self.attention = Attention(self.units)
+        self.decoder = Decoder(self.units)
+        self.output = Output(self.num_tokens)
+        self.training_model = self.build_training_model()
 
-        attention = Attention(self.latent_dim)
-
-        context_vector, _ = attention(decoder_inputs, encoder_hidden_states)
-
-        decoder_dense, decoder_lstm, decoder_outputs = self._build_decoder(decoder_inputs, context_vector, encoder_states)
-
-        # training_model: encoder_inputs, decoder_inputs => decoder_outputs
-        self.training_model = Model([encoder_inputs, decoder_inputs], decoder_outputs)
         self.training_model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
         self.training_model.summary()
 
-        # inference_encoder: encoder_inputs => encoder_states
-        self.inference_encoder = Model(encoder_inputs, encoder_states)
-        self.inference_decoder = self._build_inference_decoder(encoder_inputs, decoder_dense, decoder_inputs, decoder_lstm, attention, encoder_states, encoder_hidden_states)
+        self.inference_model = self.build_inference_model()
 
-    def _build_inference_decoder(self, encoder_inputs, decoder_dense, decoder_inputs, decoder_lstm, attention, encoder_states, encoder_hidden_states):
+
+    def build_training_model(self) -> tf.keras.Model:
+        """
+        Builds and returns the keras model used during training.
+
+        :return: tf.keras.Model
+        """
+        encoder_states, state_h, state_c = self.encoder(self.encoder_input)
+        initial_state = [state_h, state_c]
+        context_vectors, _ = self.attention(self.decoder_input, encoder_states)
+        x = tf.concat([self.decoder_input, context_vectors], axis=2)
+        decoder_output, _, _ = self.decoder(x, initial_state=initial_state)
+        scores = self.output(decoder_output)
+        return tf.keras.Model([self.encoder_input, self.decoder_input], scores)
+
+    def build_inference_model(self):
+        """
+        Builds and returns the keras model used during inference.
+
+        :return: tf.keras.Model
+        """
         predictions = []
-        prediction = decoder_inputs
-        state_h, state_c = encoder_states
-        for i in range(self.max_input_txt_size):
-            context_vectors, _ = attention(prediction, encoder_hidden_states)
-            x = Concatenate(axis=2)([prediction, context_vectors])
-            decoder_output, state_h, state_c = decoder_lstm(x, initial_state=[state_h, state_c])
-            prediction = decoder_dense(decoder_output)
+        prediction = self.decoder_input
+        encoder_states, state_h, state_c = self.encoder(self.encoder_input)
+        for i in range(self.max_output_txt_size):
+            context_vectors, _ = self.attention(prediction, encoder_states)
+            x = tf.concat([prediction, context_vectors], axis=2)
+            decoder_output, state_h, state_c = self.decoder(
+                x, [state_h, state_c])
+            prediction = self.output(decoder_output)
             predictions.append(prediction)
-        probabilities = Concatenate(axis=1)(predictions)
-        return tf.keras.Model([encoder_inputs, decoder_inputs], probabilities)
-
-    def _build_encoder(self, input_image_tensor):
-        encoder = input_image_tensor
-        encoder = Conv2D(64, (3, 3), padding='same', activation='relu')(encoder)
-        encoder = MaxPool2D(strides=(2, 2), padding='valid')(encoder)
-        encoder = BatchNormalization()(encoder)
-        encoder = Conv2D(128, (3, 3), padding='same', activation='relu')(encoder)
-        encoder = MaxPool2D(strides=(2, 2), padding='valid')(encoder)
-        encoder = BatchNormalization()(encoder)
-        encoder = Conv2D(256, (3, 3), padding='same', activation='relu')(encoder)
-        encoder = MaxPool2D(strides=(2, 2), padding='valid')(encoder)
-        encoder = BatchNormalization()(encoder)
-        encoder = Conv2D(256, (3, 3), padding='valid', activation='relu')(encoder)
-        encoder = MaxPool2D(strides=(2, 2), padding='valid')(encoder)
-        encoder = BatchNormalization()(encoder)
-
-        assert encoder.shape[1] == 1
-        encoder = K.squeeze(encoder, axis=1)
-        activations, state_h, state_c = LSTM(self.latent_dim, return_sequences=True, return_state=True)(encoder)
-        return activations, [state_h, state_c]
-
-    def _build_decoder(self, decoder_inputs, context_vector, encoder_state):
-
-        decoder_lstm = LSTM(self.latent_dim, return_sequences=True, return_state=True)
-
-        x = Concatenate(axis=2)([decoder_inputs, context_vector])
-        activations, _, _ = decoder_lstm(x, initial_state=encoder_state)
-
-        decoder_dense = Dense(self.num_tokens, activation='softmax')
-        decoder_outputs = decoder_dense(activations)
-
-        return decoder_dense, decoder_lstm, decoder_outputs
+        scores = tf.concat(predictions, axis=1)
+        return tf.keras.Model([self.encoder_input, self.decoder_input], scores)
 
     def fit(self, images: list, texts: list, epochs: int = 10, batch_size: int = None, validation_split=0.):
         if batch_size is None:
@@ -111,7 +91,7 @@ class KerasAttentionOCR:
             target_seq = np.zeros((1, 1, self.num_tokens))
             target_seq[0, 0, self.vectorizer.character_index[self.vectorizer.SOS]] = 1.
 
-            pred = self.inference_decoder.predict([image] + [target_seq])
+            pred = self.inference_model.predict([image] + [target_seq])
 
             text = ''
             samples = np.argmax(pred, axis=2)[0]
@@ -124,17 +104,58 @@ class KerasAttentionOCR:
         return texts
 
 
+class Encoder:
+    def __init__(self, units):
+        layers = [Conv2D(64, (3, 3), padding='same', activation='relu'),
+                  MaxPool2D(strides=(2, 2), padding='valid'),
+                  BatchNormalization(),
+                  Conv2D(128, (3, 3), padding='same', activation='relu'),
+                  MaxPool2D(strides=(2, 2), padding='valid'),
+                  BatchNormalization(),
+                  Conv2D(256, (3, 3), padding='same', activation='relu'),
+                  MaxPool2D(strides=(2, 2), padding='valid'),
+                  BatchNormalization(),
+                  Conv2D(256, (3, 3), padding='valid', activation='relu'),
+                  MaxPool2D(strides=(2, 2), padding='valid'),
+                  BatchNormalization()]
+
+        self.cnn = Sequential(layers)
+        self.lstm = LSTM(units, return_sequences=True, return_state=True)
+
+    def __call__(self, encoder_input):
+        out = self.cnn(encoder_input)
+        out = tf.squeeze(out, axis=1)
+        return self.lstm(out)
+
+
 class Attention:
     def __init__(self, units: int):
         # https://papers.nips.cc/paper/7181-attention-is-all-you-need.pdf
-        self.projection = Dense(units, activation="sigmoid")
 
-    def __call__(self, decoder_inputs, encoder_hidden_states):
-        query = self.projection(decoder_inputs)
-        key = encoder_hidden_states
-        value = encoder_hidden_states
-        key = Permute([2, 1])(key)
-        attention = Dot(axes=(2, 1))([query, key])
-        attention_weights = Softmax(axis=1)(attention)
-        context_vector = Dot(axes=(2, 1))([attention_weights, value])
-        return context_vector, attention_weights
+        self.projection_q = Dense(units)
+
+    def __call__(self, decoder_input, encoder_states):
+        Q = self.projection_q(decoder_input)
+        K = encoder_states
+        V = encoder_states
+
+        logits = tf.matmul(Q, tf.transpose(K, perm=[0, 2, 1]))
+        attention_weights = tf.nn.softmax(logits)
+        context_vectors = tf.matmul(attention_weights, V)
+        return [context_vectors, attention_weights]
+
+
+class Decoder:
+    def __init__(self, units):
+        self.lstm = LSTM(units, return_sequences=True, return_state=True)
+
+    def __call__(self, decoder_input, initial_state):
+        return self.lstm(decoder_input, initial_state)
+
+
+class Output:
+    def __init__(self, vocab_size):
+        self.dense = Dense(vocab_size, activation='softmax')
+
+    def __call__(self, decoder_output):
+        return self.dense(decoder_output)
