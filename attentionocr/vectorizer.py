@@ -3,7 +3,7 @@ import numpy as np
 
 class VectorizerOCR:
 
-    def __init__(self, vocabulary: list, max_txt_length: int = 12):
+    def __init__(self, vocabulary: list, image_height=32, image_width=320, max_txt_length: int = 40):
         self.SOS = '<SOS>'
         self.EOS = '<EOS>'
         self.PAD = '<PAD>'
@@ -12,8 +12,8 @@ class VectorizerOCR:
         self.character_index = dict([(char, i) for i, char in enumerate(self.target_characters)])
         self.character_reverse_index = dict((i, char) for char, i in self.character_index.items())
         self.max_txt_length = max_txt_length
-        self.image_height = 32
-        self.image_width = 144
+        self.image_height = image_height
+        self.image_width = image_width
 
     def vectorize(self, filenames: list, texts: list):
         assert len(filenames) == len(texts)
@@ -27,7 +27,7 @@ class VectorizerOCR:
             encoder_input_data[sample_index] = input_image
 
             for char_pos, char in enumerate([self.SOS] + list(target_text) + [self.EOS]):
-                # decoder_target_data is ahead of decoder_input_data by one timestep
+                # decoder_target_data is one ahead of decoder_input_data
                 decoder_input_data[sample_index, char_pos, self.character_index[char]] = 1.
                 if char_pos > 0:
                     # decoder_target_data will be ahead by one timestep and will not include the start character.
@@ -38,17 +38,32 @@ class VectorizerOCR:
 
     def load_image(self, filename):
         image = cv2.imread(filename)
+
+        height, width, _ = image.shape
+        scaling_factor = height / self.image_height
+        if height != self.image_height:
+            if width / scaling_factor <= self.image_width:
+                # scale both axis when the scaled width is smaller than the target width
+                image = cv2.resize(image, (int(width / scaling_factor), int(height / scaling_factor)), interpolation=cv2.INTER_AREA)
+            else:
+                # otherwise, compress the horizontal axis
+                image = cv2.resize(image, (self.image_width, self.image_height), interpolation=cv2.INTER_AREA)
+        elif width > self.image_width:
+            # the height matches, but the width is longer
+            image = cv2.resize(image, (self.image_width, self.image_height), interpolation=cv2.INTER_AREA)
+
         image = (cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) / 127.5) - 1.0
+        _, width = image.shape
+        if width < self.image_width:
+            # zero-pad on the right side
+            image = np.pad(image, ((0, 0), (0, self.image_width - width)), 'constant')
+
         image = np.expand_dims(image, axis=2)
+
         return image
 
     def tokens(self):
         return self.target_characters
-
-
-def chunks(l, n):
-    for i in range(0, len(l), n):
-        yield l[i:i + n]
 
 
 class VectorizedBatchGenerator:
@@ -57,9 +72,13 @@ class VectorizedBatchGenerator:
         self.vectorizer = vectorizer
         self.batch_size = batch_size
 
+    def chunks(self, l, n):
+        for i in range(0, len(l), n):
+            yield l[i:i + n]
+
     def flow_from_dataset(self, dataset: list):
         current_idx = 0
-        batches = list(chunks(dataset, self.batch_size))
+        batches = list(self.chunks(dataset, self.batch_size))
         while True:
             if current_idx >= len(batches):
                 current_idx = 0

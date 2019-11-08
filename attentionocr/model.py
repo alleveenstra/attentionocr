@@ -23,9 +23,10 @@ class KerasAttentionOCR:
         # Build the model.
         self.encoder_input = Input(shape=(self.image_height, None, 1), name="encoder_input")
         self.decoder_input = Input(shape=(None, self.num_tokens), name="decoder_input")
-        self.inference_encoder_states = Input(shape=(None, self.units,), name="encoder_states")
-        self.inference_hidden_state = Input(shape=(self.units,), name="decoder_hidden_state")
-        self.inference_cell_state = Input(shape=(self.units,), name="decoder_cell_state")
+        
+        self.inference_image_encoding = Input(shape=(None, self.units), name="inference_image_encoding")
+        self.inference_hidden_state = Input(shape=(self.units,), name="inference_hidden_state")
+        self.inference_cell_state = Input(shape=(self.units,), name="inference_cell_state")
 
         self.encoder = Encoder(self.units)
         self.attention = Attention(self.units)
@@ -39,36 +40,26 @@ class KerasAttentionOCR:
         self.inference_encoder = self.build_inference_encoder_model()
         self.inference_decoder = self.build_inference_decoder_model()
 
-    def build_inference_encoder_model(self) -> tf.keras.Model:
-        encoder_states, state_h, state_c = self.encoder(self.encoder_input)
-        return Model(self.encoder_input, [encoder_states, state_h, state_c])
-
-    def build_inference_decoder_model(self) -> tf.keras.Model:
-        """
-        Builds and returns the keras model used during training.
-
-        :return: tf.keras.Model
-        """
-        initial_state = [self.inference_hidden_state, self.inference_cell_state]
-        context_vectors, _ = self.attention(self.decoder_input, self.inference_encoder_states)
-        x = tf.concat([self.decoder_input, context_vectors], axis=2)
-        decoder_output, hidden_state, cell_state = self.decoder(x, initial_state=initial_state)
-        scores = self.output(decoder_output)
-        return tf.keras.Model([self.inference_encoder_states, self.inference_hidden_state, self.inference_cell_state, self.decoder_input], [scores, hidden_state, cell_state])
-
     def build_training_model(self) -> tf.keras.Model:
-        """
-        Builds and returns the keras model used during training.
-
-        :return: tf.keras.Model
-        """
-        encoder_states, state_h, state_c = self.encoder(self.encoder_input)
-        initial_state = [state_h, state_c]
-        context_vectors, _ = self.attention(self.decoder_input, encoder_states)
+        image_encoding, hidden_state, cell_state = self.encoder(self.encoder_input)
+        initial_state = [hidden_state, cell_state]
+        context_vectors, _ = self.attention(self.decoder_input, image_encoding)
         x = tf.concat([self.decoder_input, context_vectors], axis=2)
         decoder_output, _, _ = self.decoder(x, initial_state=initial_state)
         scores = self.output(decoder_output)
         return tf.keras.Model([self.encoder_input, self.decoder_input], scores)
+
+    def build_inference_encoder_model(self) -> tf.keras.Model:
+        image_encoding, state_h, state_c = self.encoder(self.encoder_input)
+        return Model(self.encoder_input, [image_encoding, state_h, state_c])
+
+    def build_inference_decoder_model(self) -> tf.keras.Model:
+        initial_state = [self.inference_hidden_state, self.inference_cell_state]
+        context_vectors, _ = self.attention(self.decoder_input, self.inference_image_encoding)
+        x = tf.concat([self.decoder_input, context_vectors], axis=2)
+        decoder_output, hidden_state, cell_state = self.decoder(x, initial_state=initial_state)
+        scores = self.output(decoder_output)
+        return tf.keras.Model([self.inference_image_encoding, self.inference_hidden_state, self.inference_cell_state, self.decoder_input], [scores, hidden_state, cell_state])
 
     def fit(self, images: list, texts: list, epochs: int = 10, batch_size: int = None, validation_split=0.):
         if batch_size is None:
@@ -81,7 +72,7 @@ class KerasAttentionOCR:
         K.set_learning_phase(1)
         self.training_model.fit_generator(generator, steps_per_epoch=steps_per_epoch, epochs=epochs, validation_data=validation_data, validation_steps=validation_steps)
 
-    def predict(self, images):
+    def predict(self, images) -> list:
         K.set_learning_phase(0)
         texts = []
         for image in images:
@@ -105,8 +96,6 @@ class KerasAttentionOCR:
                 if sample == self.vectorizer.EOS or sample == self.vectorizer.PAD or len(text) > self.max_output_txt_size:
                     break
                 text += sample
-                # target_seq = np.zeros((1, 1, self.num_tokens))
-                # target_seq[0, 0, sample_index] = 1.
 
             texts.append(text)
         return texts
@@ -139,15 +128,15 @@ class Encoder:
 class Attention:
     def __init__(self, units: int):
         # https://papers.nips.cc/paper/7181-attention-is-all-you-need.pdf
-        self.projection_q = Dense(units)
+        self.query_projection = Dense(units)
 
     def __call__(self, decoder_input, encoder_states):
-        Q = self.projection_q(decoder_input)
-        K = encoder_states
-        V = encoder_states
-        logits = tf.matmul(Q, tf.transpose(K, perm=[0, 2, 1]))
+        query = self.query_projection(decoder_input)
+        key = encoder_states
+        value = encoder_states
+        logits = tf.matmul(query, tf.transpose(key, perm=[0, 2, 1]))
         attention_weights = tf.nn.softmax(logits)
-        context_vectors = tf.matmul(attention_weights, V)
+        context_vectors = tf.matmul(attention_weights, value)
         return [context_vectors, attention_weights]
 
 
