@@ -1,7 +1,7 @@
-import tensorflow.python.keras.backend as K
-from tensorflow.python.keras import Input, Sequential
-from tensorflow.python.keras.layers import MaxPool2D, Bidirectional, Concatenate, Conv2D, Activation, RepeatVector, Permute, LSTM, Multiply, BatchNormalization, Flatten, Dense, MaxPooling2D, TimeDistributed, Dot, Softmax, Lambda
-from tensorflow.python.keras.models import Model
+import tensorflow.keras.backend as K
+from tensorflow.keras import Input, Sequential
+from tensorflow.keras.layers import MaxPool2D, Bidirectional, Concatenate, Conv2D, Activation, RepeatVector, Permute, LSTM, Multiply, BatchNormalization, Flatten, Dense, MaxPooling2D, TimeDistributed, Dot, Softmax, Lambda
+from tensorflow.keras.models import Model
 import tensorflow as tf
 
 import numpy as np
