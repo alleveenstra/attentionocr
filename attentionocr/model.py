@@ -32,11 +32,8 @@ class KerasAttentionOCR:
         self.attention = Attention(self.units)
         self.decoder = Decoder(self.units)
         self.output = Output(self.num_tokens)
+
         self.training_model = self.build_training_model()
-
-        self.training_model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
-        self.training_model.summary()
-
         self.inference_encoder = self.build_inference_encoder_model()
         self.inference_decoder = self.build_inference_decoder_model()
 
@@ -62,6 +59,8 @@ class KerasAttentionOCR:
         return tf.keras.Model([self.inference_image_encoding, self.inference_hidden_state, self.inference_cell_state, self.decoder_input], [scores, hidden_state, cell_state])
 
     def fit(self, images: list, texts: list, epochs: int = 10, batch_size: int = None, validation_split=0.):
+        self.training_model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
+        self.training_model.summary()
         if batch_size is None:
             batch_size = len(images)
         X, y = self.vectorizer.vectorize(images, texts)

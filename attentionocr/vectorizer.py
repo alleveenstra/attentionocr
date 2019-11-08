@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 
+
 class VectorizerOCR:
 
     def __init__(self, vocabulary: list, image_height=32, image_width=144, max_txt_length: int = 12):
