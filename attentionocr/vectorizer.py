@@ -3,7 +3,7 @@ import numpy as np
 
 class VectorizerOCR:
 
-    def __init__(self, vocabulary: list, image_height=32, image_width=320, max_txt_length: int = 40):
+    def __init__(self, vocabulary: list, image_height=32, image_width=144, max_txt_length: int = 10):
         self.SOS = '<SOS>'
         self.EOS = '<EOS>'
         self.PAD = '<PAD>'
