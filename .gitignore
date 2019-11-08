@@ -3,3 +3,4 @@ train
 .idea
 venv
 *.pyc
+tests/out*

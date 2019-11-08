@@ -10,14 +10,14 @@ from .vectorizer import VectorizerOCR
 
 class KerasAttentionOCR:
 
-    def __init__(self, vectorizer: VectorizerOCR, latent_dim=256, image_height=32, image_width=144, bidirectional_encoder=False):
+    def __init__(self, vectorizer: VectorizerOCR, latent_dim=256, bidirectional_encoder=False):
         self.vectorizer = vectorizer
         self.num_tokens = len(vectorizer.tokens())
         self.max_input_txt_size = self.vectorizer.max_txt_length
         self.max_output_txt_size = self.vectorizer.max_txt_length + 2
         self.latent_dim = latent_dim
-        self.image_height = image_height
-        self.image_width = image_width
+        self.image_height = vectorizer.image_height
+        self.image_width = vectorizer.image_width
         self.bidirectional_encoder = bidirectional_encoder
         self._build_model()
 
