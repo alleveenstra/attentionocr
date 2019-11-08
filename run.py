@@ -9,7 +9,7 @@ if __name__ == "__main__":
     test_data = list(FlatDirectoryIterator('test/*.jpg'))
 
     images, texts = zip(*train_data)
-    model.fit(images, texts, epochs=1, batch_size=64, validation_split=0.2)
+    model.fit(images, texts, epochs=1, batch_size=64, validation_split=0.5)
 
     for i in range(10):
         filename, text = test_data[i]
