@@ -10,7 +10,6 @@ This makes some of the OCR implementations hard to use and maintain.
 ## To do
 
 * Make image height variable
-* Implement a custom accuracy metric
 * Name all input and output tensors 
 * Build unit tests
 * Show a test case on google colab
