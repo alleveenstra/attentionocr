@@ -1,3 +1,3 @@
 from .loader import FlatDirectoryIterator
 from .model import AttentionOCR
-from .vectorizer import VectorizerOCR
+from .vectorizer import VectorizerOCR, VectorizedBatchGenerator

@@ -16,11 +16,15 @@ class VectorizerOCR:
         self.image_height = image_height
         self.image_width = image_width
 
-    def vectorize(self, filenames: list, texts: list):
+    def vectorize(self, filenames: list, texts: list, is_validation: bool = False):
         assert len(filenames) == len(texts)
         encoder_input = np.zeros((len(texts), self.image_height, self.image_width, 1), dtype='float32')
-        decoder_input = np.zeros((len(texts), self.max_txt_length + 2, self.num_decoder_tokens), dtype='float32')
-        decoder_output = np.zeros((len(texts), self.max_txt_length + 2, self.num_decoder_tokens), dtype='float32')
+
+        decoder_input_size = 1 if is_validation else self.max_txt_length + 2
+        decoder_input = np.zeros((len(texts), decoder_input_size, self.num_decoder_tokens), dtype='float32')
+
+        decoder_output_size = self.max_txt_length + 2
+        decoder_output = np.zeros((len(texts), decoder_output_size, self.num_decoder_tokens), dtype='float32')
 
         for sample_index, (filename, target_text) in enumerate(zip(filenames, texts)):
             # Load the image
@@ -30,7 +34,7 @@ class VectorizerOCR:
             target_text = target_text[:self.max_txt_length]
 
             # decoder input
-            decoder_input_tokens = [self.SOS] + list(target_text) + [self.EOS]
+            decoder_input_tokens = [self.SOS] if is_validation else [self.SOS] + list(target_text) + [self.EOS]
             for char_pos, char in enumerate(decoder_input_tokens):
                 decoder_input[sample_index, char_pos, self.character_index[char]] = 1.
             decoder_input[sample_index, char_pos + 1:, self.character_index[self.PAD]] = 1.
@@ -83,7 +87,7 @@ class VectorizedBatchGenerator:
         for i in range(0, len(l), n):
             yield l[i:i + n]
 
-    def flow_from_dataset(self, dataset: list):
+    def flow_from_dataset(self, dataset: list, is_validation: bool = False):
         current_idx = 0
         batches = list(self.chunks(dataset, self.batch_size))
         while True:
@@ -92,4 +96,4 @@ class VectorizedBatchGenerator:
             batch = batches[current_idx]
             images, texts = zip(*batch)
             current_idx += 1
-            yield self.vectorizer.vectorize(images, texts)
+            yield self.vectorizer.vectorize(images, texts, is_validation)

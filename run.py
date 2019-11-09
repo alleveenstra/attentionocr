@@ -16,7 +16,7 @@ if __name__ == "__main__":
     generator = VectorizedBatchGenerator(vectorizer=vec)
     train_bgen = generator.flow_from_dataset(train_data)
     test_bgen = generator.flow_from_dataset(test_data)
-    model.fit_generator(train_bgen, epochs=1, steps_per_epoch=10, validation_data=test_bgen)
+    model.fit_generator(train_bgen, epochs=1, steps_per_epoch=1, validation_data=test_bgen)
     
     # model.save('test.h5')
     # model.load('test.h5')

@@ -8,7 +8,7 @@ import numpy as np
 from tqdm import tqdm
 
 from attentionocr import metrics
-from .vectorizer import VectorizerOCR, VectorizedBatchGenerator
+from .vectorizer import VectorizerOCR
 
 
 class AttentionOCR:
@@ -38,6 +38,20 @@ class AttentionOCR:
         self.training_model = self.build_training_model()
         self.inference_encoder = self.build_inference_encoder_model()
         self.inference_decoder = self.build_inference_decoder_model()
+        self.inference_model = self.build_inference_model()
+
+    def build_inference_model(self):
+        predictions = []
+        prediction = self.decoder_input
+        encoder_output, hidden_state, cell_state = self.encoder(self.encoder_input)
+        for i in range(self.max_output_txt_size):
+            context_vectors, attention_weights = self.attention(prediction, encoder_output)
+            x = tf.concat([prediction, context_vectors], axis=2)
+            decoder_output, hidden_state, cell_state = self.decoder(x, [hidden_state, cell_state])
+            prediction = self.output(decoder_output)
+            predictions.append(prediction)
+        scores = tf.concat(predictions, axis=1)
+        return tf.keras.Model([self.encoder_input, self.decoder_input], scores)
 
     def build_training_model(self) -> tf.keras.Model:
         encoder_output, hidden_state, cell_state = self.encoder(self.encoder_input)
@@ -76,7 +90,7 @@ class AttentionOCR:
                 optimizer.apply_gradients(zip(gradients, variables))
                 if step % validate_every_steps == 0 and validation_data is not None:
                     x, y_true = next(validation_data)
-                    y_pred = self.training_model(x)
+                    y_pred = self.inference_model(x)
                     accuracy = metrics.masked_accuracy(y_true, y_pred)
                     pbar.set_postfix({"test_accuracy": "%.04f" % accuracy})
 
@@ -102,26 +116,19 @@ class AttentionOCR:
             # feed the input, retrieve encoder state vectors
             image = np.expand_dims(image, axis=0)
 
-            # encoder_input -> [encoder_output, hidden_state, cell_state]
-            encoder_output, hidden_state, cell_state = self.inference_encoder.predict(image)
-
             decoder_input = np.zeros((1, 1, self.num_tokens))
             decoder_input[0, 0, self.vectorizer.character_index[self.vectorizer.SOS]] = 1.
 
             text = ""
-            while True:
-                # [self.encoder_output, self.hidden_state_input, self.cell_state_input, self.decoder_input] -> [scores, hidden_state, cell_state]
-                decoder_output, hidden_state, cell_state = self.inference_decoder.predict([encoder_output, hidden_state, cell_state, decoder_input])
+            decoder_output = self.inference_model.predict([image, decoder_input])
 
-                # greedy search
-                sample_index = np.argmax(decoder_output[0, -1, :])
+            # greedy search
+            greedy_matches = np.argmax(decoder_output, axis=-1)[0]
+            for sample_index in greedy_matches:
                 sample = self.vectorizer.character_reverse_index[sample_index]
                 if sample == self.vectorizer.EOS or sample == self.vectorizer.PAD or len(text) > self.max_output_txt_size:
                     break
                 text += sample
-
-                # loop the decoder output into the decoder input
-                decoder_input = decoder_output
 
             texts.append(text)
         return texts
