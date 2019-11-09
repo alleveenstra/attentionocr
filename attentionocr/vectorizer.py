@@ -1,49 +1,36 @@
 import cv2
 import numpy as np
-
+from .vocabulary import Vocabulary
 
 class VectorizerOCR:
 
-    def __init__(self, vocabulary: list, image_height=32, image_width=144, max_txt_length: int = 12):
-        self.SOS = '<SOS>'
-        self.EOS = '<EOS>'
-        self.PAD = '<PAD>'
-        self.target_characters = [self.SOS, self.EOS, self.PAD] + vocabulary
-        self.num_decoder_tokens = len(self.target_characters)
-        self.character_index = dict([(char, i) for i, char in enumerate(self.target_characters)])
-        self.character_reverse_index = dict((i, char) for char, i in self.character_index.items())
+    def __init__(self, vocabulary: Vocabulary, image_height=32, image_width=320, max_txt_length: int = 40):
+        self.vocabulary = vocabulary
         self.max_txt_length = max_txt_length
         self.image_height = image_height
         self.image_width = image_width
 
-    def vectorize(self, filenames: list, texts: list, is_validation: bool = False):
+    def vectorize(self, filenames: list, texts: list, is_training: bool = True):
         assert len(filenames) == len(texts)
         encoder_input = np.zeros((len(texts), self.image_height, self.image_width, 1), dtype='float32')
 
-        decoder_input_size = 1 if is_validation else self.max_txt_length + 2
-        decoder_input = np.zeros((len(texts), decoder_input_size, self.num_decoder_tokens), dtype='float32')
+        decoder_input_size = self.max_txt_length + 2 if is_training else 1
+        decoder_input = np.zeros((len(texts), decoder_input_size, len(self.vocabulary)), dtype='float32')
 
         decoder_output_size = self.max_txt_length + 2
-        decoder_output = np.zeros((len(texts), decoder_output_size, self.num_decoder_tokens), dtype='float32')
+        decoder_output = np.zeros((len(texts), decoder_output_size, len(self.vocabulary)), dtype='float32')
 
         for sample_index, (filename, target_text) in enumerate(zip(filenames, texts)):
             # Load the image
             encoder_input[sample_index] = self.load_image(filename)
 
-            # ensure the text is not too long
-            target_text = target_text[:self.max_txt_length]
-
             # decoder input
-            decoder_input_tokens = [self.SOS] if is_validation else [self.SOS] + list(target_text) + [self.EOS]
-            for char_pos, char in enumerate(decoder_input_tokens):
-                decoder_input[sample_index, char_pos, self.character_index[char]] = 1.
-            decoder_input[sample_index, char_pos + 1:, self.character_index[self.PAD]] = 1.
+            if is_training:
+                decoder_input[sample_index, :, :] = self.vocabulary.one_hot_encode(target_text, decoder_input_size, sos=True, eos=True)
+            else:
+                decoder_input[sample_index, :, :] = self.vocabulary.one_hot_encode('', 1, sos=True, eos=False)
 
-            # decoder output
-            decoder_output_tokens = list(target_text) + [self.EOS]
-            for char_pos, char in enumerate(decoder_output_tokens):
-                decoder_output[sample_index, char_pos, self.character_index[char]] = 1.
-            decoder_output[sample_index, char_pos:, self.character_index[self.PAD]] = 1.
+            decoder_output[sample_index, :, :] = self.vocabulary.one_hot_encode(target_text, decoder_output_size, eos=True)
 
         return [encoder_input, decoder_input], decoder_output
 
@@ -87,7 +74,7 @@ class VectorizedBatchGenerator:
         for i in range(0, len(l), n):
             yield l[i:i + n]
 
-    def flow_from_dataset(self, dataset: list, is_validation: bool = False):
+    def flow_from_dataset(self, dataset: list, is_training: bool = True):
         current_idx = 0
         batches = list(self.chunks(dataset, self.batch_size))
         while True:
@@ -96,4 +83,4 @@ class VectorizedBatchGenerator:
             batch = batches[current_idx]
             images, texts = zip(*batch)
             current_idx += 1
-            yield self.vectorizer.vectorize(images, texts, is_validation)
+            yield self.vectorizer.vectorize(images, texts, is_training)

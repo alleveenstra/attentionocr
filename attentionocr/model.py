@@ -5,7 +5,6 @@ import tensorflow as tf
 import tensorflow.keras.backend as K
 from tensorflow.keras import Input, Sequential
 from tensorflow.keras.layers import MaxPool2D, Conv2D, LSTM, BatchNormalization, Dense
-from tensorflow.keras.models import Model
 from tqdm import tqdm
 
 from attentionocr import metrics
@@ -16,7 +15,7 @@ class AttentionOCR:
 
     def __init__(self, vectorizer: VectorizerOCR, units=256):
         self.vectorizer = vectorizer
-        self.num_tokens = len(vectorizer.tokens())
+        self.vocabulary = vectorizer.vocabulary
         self.max_input_txt_size = self.vectorizer.max_txt_length
         self.max_output_txt_size = self.vectorizer.max_txt_length + 2
         self.image_height = 32
@@ -25,21 +24,24 @@ class AttentionOCR:
 
         # Build the model.
         self.encoder_input = Input(shape=(self.image_height, None, 1), name="encoder_input")
-        self.decoder_input = Input(shape=(None, self.num_tokens), name="decoder_input")
-
-        self.inference_encoder_output = Input(shape=(None, self.units), name="inference_encoder_output")
-        self.inference_hidden_state = Input(shape=(self.units,), name="inference_hidden_state")
-        self.inference_cell_state = Input(shape=(self.units,), name="inference_cell_state")
+        self.decoder_input = Input(shape=(None, len(self.vocabulary)), name="decoder_input")
 
         self.encoder = Encoder(self.units)
         self.attention = Attention(self.units)
         self.decoder = Decoder(self.units)
-        self.output = Output(self.num_tokens)
+        self.output = Output(len(self.vocabulary))
 
         self.training_model = self.build_training_model()
-        self.inference_encoder = self.build_inference_encoder_model()
-        self.inference_decoder = self.build_inference_decoder_model()
         self.inference_model = self.build_inference_model()
+
+    def build_training_model(self) -> tf.keras.Model:
+        encoder_output, hidden_state, cell_state = self.encoder(self.encoder_input)
+        initial_state = [hidden_state, cell_state]
+        context_vectors, _ = self.attention(self.decoder_input, encoder_output)
+        x = tf.concat([self.decoder_input, context_vectors], axis=2)
+        decoder_output, _, _ = self.decoder(x, initial_state=initial_state)
+        logits = self.output(decoder_output)
+        return tf.keras.Model([self.encoder_input, self.decoder_input], logits)
 
     def build_inference_model(self) -> tf.keras.Model:
         predictions = []
@@ -54,35 +56,14 @@ class AttentionOCR:
         logits = tf.concat(predictions, axis=1)
         return tf.keras.Model([self.encoder_input, self.decoder_input], logits)
 
-    def build_training_model(self) -> tf.keras.Model:
-        encoder_output, hidden_state, cell_state = self.encoder(self.encoder_input)
-        initial_state = [hidden_state, cell_state]
-        context_vectors, _ = self.attention(self.decoder_input, encoder_output)
-        x = tf.concat([self.decoder_input, context_vectors], axis=2)
-        decoder_output, _, _ = self.decoder(x, initial_state=initial_state)
-        logits = self.output(decoder_output)
-        return tf.keras.Model([self.encoder_input, self.decoder_input], logits)
-
-    def build_inference_encoder_model(self) -> tf.keras.Model:
-        encoder_output, state_h, state_c = self.encoder(self.encoder_input)
-        return Model(self.encoder_input, [encoder_output, state_h, state_c])
-
-    def build_inference_decoder_model(self) -> tf.keras.Model:
-        initial_state = [self.inference_hidden_state, self.inference_cell_state]
-        context_vectors, _ = self.attention(self.decoder_input, self.inference_encoder_output)
-        x = tf.concat([self.decoder_input, context_vectors], axis=2)
-        decoder_output, hidden_state, cell_state = self.decoder(x, initial_state=initial_state)
-        scores = self.output(decoder_output)
-        return tf.keras.Model([self.inference_encoder_output, self.inference_hidden_state, self.inference_cell_state, self.decoder_input], [scores, hidden_state, cell_state])
-
     def fit_generator(self, generator, steps_per_epoch: int = 1, epochs: int = 1, validation_data=None, validate_every_steps: int = 10) -> None:
         optimizer = tf.optimizers.RMSprop()
         loss_function = tf.losses.CategoricalCrossentropy()
         K.set_learning_phase(1)
         accuracy = 0
         for epoch in range(epochs):
-            print("Epoch %d / %d..." % (epoch, epochs))
             pbar = tqdm(range(steps_per_epoch))
+            pbar.set_description("Epoch %03d / %03d " % (epoch, epochs))
             for step in pbar:
                 x, y_true = next(generator)
                 with tf.GradientTape() as tape:
@@ -95,16 +76,7 @@ class AttentionOCR:
                     x, y_true = next(validation_data)
                     y_pred = self.inference_model(x)
                     accuracy = metrics.masked_accuracy(y_true, y_pred)
-                pbar.set_postfix({"test_accuracy": "%.04f" % accuracy, "loss": loss.numpy()})
-
-    def fit(self, images: list, texts: list, epochs: int = 10, batch_size: int = None, validation_split=0.) -> None:
-        self.training_model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
-        self.training_model.summary()
-        if batch_size is None:
-            batch_size = len(images)
-        X, y = self.vectorizer.vectorize(images, texts)
-        K.set_learning_phase(1)
-        self.training_model.fit(X, y, batch_size=batch_size, epochs=epochs, validation_split=validation_split)
+                pbar.set_postfix({"test_accuracy": "%.4f" % accuracy, "loss": "%.4f" % loss.numpy()})
 
     def save(self, filepath) -> None:
         self.training_model.save_weights(filepath=filepath)
@@ -116,24 +88,13 @@ class AttentionOCR:
         K.set_learning_phase(0)
         texts = []
         for image in images:
-            # feed the input, retrieve encoder state vectors
             image = np.expand_dims(image, axis=0)
 
-            decoder_input = np.zeros((1, 1, self.num_tokens))
-            decoder_input[0, 0, self.vectorizer.character_index[self.vectorizer.SOS]] = 1.
+            decoder_input = np.zeros((1, 1, len(self.vocabulary)))
+            decoder_input[0, :, :] = self.vocabulary.one_hot_encode('', 1, sos=True, eos=False)
 
-            text = ""
             decoder_output = self.inference_model.predict([image, decoder_input])
-
-            # greedy search
-            greedy_matches = np.argmax(decoder_output, axis=-1)[0]
-            for sample_index in greedy_matches:
-                sample = self.vectorizer.character_reverse_index[sample_index]
-                if sample == self.vectorizer.EOS or sample == self.vectorizer.PAD or len(text) > self.max_output_txt_size:
-                    break
-                text += sample
-
-            texts.append(text)
+            texts.append(self.vocabulary.one_hot_decode(decoder_output, self.max_output_txt_size))
         return texts
 
 
