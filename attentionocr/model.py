@@ -1,10 +1,11 @@
-import tensorflow.keras.backend as K
-from tensorflow.keras import Input, Sequential
-from tensorflow.keras.layers import MaxPool2D, Bidirectional, Concatenate, Conv2D, Activation, RepeatVector, Permute, LSTM, Multiply, BatchNormalization, Flatten, Dense, MaxPooling2D, TimeDistributed, Dot, Softmax, Lambda
-from tensorflow.keras.models import Model
-import tensorflow as tf
+from typing import List, Tuple
 
 import numpy as np
+import tensorflow as tf
+import tensorflow.keras.backend as K
+from tensorflow.keras import Input, Sequential
+from tensorflow.keras.layers import MaxPool2D, Conv2D, LSTM, BatchNormalization, Dense
+from tensorflow.keras.models import Model
 from tqdm import tqdm
 
 from attentionocr import metrics
@@ -25,7 +26,7 @@ class AttentionOCR:
         # Build the model.
         self.encoder_input = Input(shape=(self.image_height, None, 1), name="encoder_input")
         self.decoder_input = Input(shape=(None, self.num_tokens), name="decoder_input")
-        
+
         self.inference_encoder_output = Input(shape=(None, self.units), name="inference_encoder_output")
         self.inference_hidden_state = Input(shape=(self.units,), name="inference_hidden_state")
         self.inference_cell_state = Input(shape=(self.units,), name="inference_cell_state")
@@ -40,7 +41,7 @@ class AttentionOCR:
         self.inference_decoder = self.build_inference_decoder_model()
         self.inference_model = self.build_inference_model()
 
-    def build_inference_model(self):
+    def build_inference_model(self) -> tf.keras.Model:
         predictions = []
         prediction = self.decoder_input
         encoder_output, hidden_state, cell_state = self.encoder(self.encoder_input)
@@ -50,8 +51,8 @@ class AttentionOCR:
             decoder_output, hidden_state, cell_state = self.decoder(x, [hidden_state, cell_state])
             prediction = self.output(decoder_output)
             predictions.append(prediction)
-        scores = tf.concat(predictions, axis=1)
-        return tf.keras.Model([self.encoder_input, self.decoder_input], scores)
+        logits = tf.concat(predictions, axis=1)
+        return tf.keras.Model([self.encoder_input, self.decoder_input], logits)
 
     def build_training_model(self) -> tf.keras.Model:
         encoder_output, hidden_state, cell_state = self.encoder(self.encoder_input)
@@ -59,8 +60,8 @@ class AttentionOCR:
         context_vectors, _ = self.attention(self.decoder_input, encoder_output)
         x = tf.concat([self.decoder_input, context_vectors], axis=2)
         decoder_output, _, _ = self.decoder(x, initial_state=initial_state)
-        scores = self.output(decoder_output)
-        return tf.keras.Model([self.encoder_input, self.decoder_input], scores)
+        logits = self.output(decoder_output)
+        return tf.keras.Model([self.encoder_input, self.decoder_input], logits)
 
     def build_inference_encoder_model(self) -> tf.keras.Model:
         encoder_output, state_h, state_c = self.encoder(self.encoder_input)
@@ -74,11 +75,13 @@ class AttentionOCR:
         scores = self.output(decoder_output)
         return tf.keras.Model([self.inference_encoder_output, self.inference_hidden_state, self.inference_cell_state, self.decoder_input], [scores, hidden_state, cell_state])
 
-    def fit_generator(self, generator, steps_per_epoch: int = 1, epochs: int = 1, validation_data=None, validate_every_steps: int = 10):
+    def fit_generator(self, generator, steps_per_epoch: int = 1, epochs: int = 1, validation_data=None, validate_every_steps: int = 10) -> None:
         optimizer = tf.optimizers.RMSprop()
         loss_function = tf.losses.categorical_crossentropy
         K.set_learning_phase(1)
+        accuracy = 0
         for epoch in range(epochs):
+            print("Epoch %d / %d..." % (epoch, epochs))
             pbar = tqdm(range(steps_per_epoch))
             for step in pbar:
                 x, y_true = next(generator)
@@ -92,9 +95,9 @@ class AttentionOCR:
                     x, y_true = next(validation_data)
                     y_pred = self.inference_model(x)
                     accuracy = metrics.masked_accuracy(y_true, y_pred)
-                    pbar.set_postfix({"test_accuracy": "%.04f" % accuracy})
+                pbar.set_postfix({"test_accuracy": "%.04f" % accuracy, "loss": loss.numpy()})
 
-    def fit(self, images: list, texts: list, epochs: int = 10, batch_size: int = None, validation_split=0.):
+    def fit(self, images: list, texts: list, epochs: int = 10, batch_size: int = None, validation_split=0.) -> None:
         self.training_model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
         self.training_model.summary()
         if batch_size is None:
@@ -103,13 +106,13 @@ class AttentionOCR:
         K.set_learning_phase(1)
         self.training_model.fit(X, y, batch_size=batch_size, epochs=epochs, validation_split=validation_split)
 
-    def save(self, filepath):
+    def save(self, filepath) -> None:
         self.training_model.save_weights(filepath=filepath)
 
-    def load(self, filepath):
+    def load(self, filepath) -> None:
         self.training_model.load_weights(filepath=filepath)
 
-    def predict(self, images) -> list:
+    def predict(self, images) -> List[str]:
         K.set_learning_phase(0)
         texts = []
         for image in images:
@@ -148,11 +151,10 @@ class Encoder:
                   Conv2D(256, (3, 3), padding='valid', activation='relu'),
                   MaxPool2D(strides=(2, 2), padding='valid'),
                   BatchNormalization()]
-
         self.cnn = Sequential(layers)
         self.lstm = LSTM(units, return_sequences=True, return_state=True)
 
-    def __call__(self, encoder_input):
+    def __call__(self, encoder_input) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         out = self.cnn(encoder_input)
         out = tf.squeeze(out, axis=1)
         return self.lstm(out)
@@ -163,7 +165,7 @@ class Attention:
         # https://papers.nips.cc/paper/7181-attention-is-all-you-need.pdf
         self.query_projection = Dense(units)
 
-    def __call__(self, decoder_input, encoder_output):
+    def __call__(self, decoder_input, encoder_output) -> Tuple[tf.Tensor, tf.Tensor]:
         query = self.query_projection(decoder_input)
         key = encoder_output
         value = encoder_output
@@ -177,7 +179,7 @@ class Decoder:
     def __init__(self, units):
         self.lstm = LSTM(units, return_sequences=True, return_state=True)
 
-    def __call__(self, decoder_input, initial_state):
+    def __call__(self, decoder_input, initial_state) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         return self.lstm(decoder_input, initial_state)
 
 
@@ -185,5 +187,5 @@ class Output:
     def __init__(self, vocab_size):
         self.dense = Dense(vocab_size, activation='softmax')
 
-    def __call__(self, decoder_output):
+    def __call__(self, decoder_output) -> tf.Tensor:
         return self.dense(decoder_output)
