@@ -18,25 +18,30 @@ class VectorizerOCR:
 
     def vectorize(self, filenames: list, texts: list):
         assert len(filenames) == len(texts)
-        encoder_input_data = np.zeros((len(texts), self.image_height, self.image_width, 1), dtype='float32')
-        decoder_input_data = np.zeros((len(texts), self.max_txt_length, self.num_decoder_tokens), dtype='float32')
-        decoder_target_data = np.zeros((len(texts), self.max_txt_length, self.num_decoder_tokens), dtype='float32')
+        encoder_input = np.zeros((len(texts), self.image_height, self.image_width, 1), dtype='float32')
+        decoder_input = np.zeros((len(texts), self.max_txt_length + 2, self.num_decoder_tokens), dtype='float32')
+        decoder_output = np.zeros((len(texts), self.max_txt_length + 2, self.num_decoder_tokens), dtype='float32')
 
         for sample_index, (filename, target_text) in enumerate(zip(filenames, texts)):
             # Load the image
-            input_image = self.load_image(filename)
-            encoder_input_data[sample_index] = input_image
+            encoder_input[sample_index] = self.load_image(filename)
 
-            for char_pos, char in enumerate([self.SOS] + list(target_text) + [self.EOS]):
-                # TODO fix index out of bounds
-                # decoder_target_data is one ahead of decoder_input_data
-                decoder_input_data[sample_index, char_pos, self.character_index[char]] = 1.
-                if char_pos > 0:
-                    # decoder_target_data will be ahead by one timestep and will not include the start character.
-                    decoder_target_data[sample_index, char_pos - 1, self.character_index[char]] = 1.
-            decoder_input_data[sample_index, char_pos + 1:, self.character_index[self.PAD]] = 1.
-            decoder_target_data[sample_index, char_pos:, self.character_index[self.PAD]] = 1.
-        return [encoder_input_data, decoder_input_data], decoder_target_data
+            # ensure the text is not too long
+            target_text = target_text[:self.max_txt_length]
+
+            # decoder input
+            decoder_input_tokens = [self.SOS] + list(target_text) + [self.EOS]
+            for char_pos, char in enumerate(decoder_input_tokens):
+                decoder_input[sample_index, char_pos, self.character_index[char]] = 1.
+            decoder_input[sample_index, char_pos + 1:, self.character_index[self.PAD]] = 1.
+
+            # decoder output
+            decoder_output_tokens = list(target_text) + [self.EOS]
+            for char_pos, char in enumerate(decoder_output_tokens):
+                decoder_output[sample_index, char_pos, self.character_index[char]] = 1.
+            decoder_output[sample_index, char_pos:, self.character_index[self.PAD]] = 1.
+
+        return [encoder_input, decoder_input], decoder_output
 
     def load_image(self, filename):
         image = cv2.imread(filename)

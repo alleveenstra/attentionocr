@@ -4,3 +4,5 @@ train
 venv
 *.pyc
 tests/out*
+dataset
+*.tgz

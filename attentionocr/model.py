@@ -5,6 +5,7 @@ from tensorflow.keras.models import Model
 import tensorflow as tf
 
 import numpy as np
+from tqdm import tqdm
 
 from attentionocr import metrics
 from .vectorizer import VectorizerOCR, VectorizedBatchGenerator
@@ -59,18 +60,25 @@ class AttentionOCR:
         scores = self.output(decoder_output)
         return tf.keras.Model([self.inference_encoder_output, self.inference_hidden_state, self.inference_cell_state, self.decoder_input], [scores, hidden_state, cell_state])
 
-    def fit_generator(self, generator, steps_per_epoch: int = None, epochs: int = 1, validation_data=None, validation_steps=None):
-        optimizer = tf.optimizers.Adam()
-        loss_function = tf.losses.CategoricalCrossentropy()
-        K.set_learning_phase(0)
+    def fit_generator(self, generator, steps_per_epoch: int = 1, epochs: int = 1, validation_data=None):
+        optimizer = tf.optimizers.RMSprop()
+        loss_function = tf.losses.categorical_crossentropy
+        K.set_learning_phase(1)
         for epoch in range(epochs):
-            for x, y_true in next(generator):
+            pbar = tqdm(range(steps_per_epoch))
+            for _ in pbar:
+                x, y_true = next(generator)
                 with tf.GradientTape() as tape:
-                    predictions = self.training_model.predict([x, y_true])
-                    loss = loss_function(y_true, predictions)
+                    predictions = self.training_model(x)
+                    loss = tf.reduce_mean(loss_function(y_true, predictions))
                 variables = self.training_model.trainable_variables
                 gradients = tape.gradient(loss, variables)
                 optimizer.apply_gradients(zip(gradients, variables))
+            if validation_data is not None:
+                x, y_true = next(validation_data)
+                y_pred = self.training_model(x)
+                accuracy = metrics.masked_accuracy(y_true, y_pred)
+                pbar.set_description("Test accuracy %.04f" % accuracy)
 
     def fit(self, images: list, texts: list, epochs: int = 10, batch_size: int = None, validation_split=0.):
         self.training_model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])

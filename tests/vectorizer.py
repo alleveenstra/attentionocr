@@ -1,6 +1,7 @@
 import unittest
 from attentionocr.vectorizer import VectorizerOCR
 import cv2
+import numpy as np
 
 
 class VectorizerTest(unittest.TestCase):
@@ -21,3 +22,11 @@ class VectorizerTest(unittest.TestCase):
         img = vec.load_image('test_288x32.png')
         assert img.shape == (image_height, image_width, 1)
         cv2.imwrite('out_288x32.png', (img + 1.0) * 127.5)
+
+    def test_too_large_input(self):
+        vec = VectorizerOCR(['a', 'b'], image_height=32, image_width=144, max_txt_length=10)
+
+        input, output = vec.vectorize(['test_100x32.png'], ['aabbaabbaabbaabb'])
+
+        print(np.argmax(input[1], axis=-1))
+        print(np.argmax(output, axis=-1))
