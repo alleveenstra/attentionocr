@@ -1,41 +1,40 @@
 import cv2
 import numpy as np
+from .vocabulary import Vocabulary
 
 
 class VectorizerOCR:
 
-    def __init__(self, vocabulary: list, image_height=32, image_width=144, max_txt_length: int = 12):
-        self.SOS = '<SOS>'
-        self.EOS = '<EOS>'
-        self.PAD = '<PAD>'
-        self.target_characters = [self.SOS, self.EOS, self.PAD] + vocabulary
-        self.num_decoder_tokens = len(self.target_characters)
-        self.character_index = dict([(char, i) for i, char in enumerate(self.target_characters)])
-        self.character_reverse_index = dict((i, char) for char, i in self.character_index.items())
+    def __init__(self, vocabulary: Vocabulary, image_height=32, image_width=320, max_txt_length: int = 40):
+        self.vocabulary = vocabulary
         self.max_txt_length = max_txt_length
         self.image_height = image_height
         self.image_width = image_width
 
-    def vectorize(self, filenames: list, texts: list):
+    def vectorize(self, filenames: list, texts: list, is_training: bool = True):
         assert len(filenames) == len(texts)
-        encoder_input_data = np.zeros((len(texts), self.image_height, self.image_width, 1), dtype='float32')
-        decoder_input_data = np.zeros((len(texts), self.max_txt_length, self.num_decoder_tokens), dtype='float32')
-        decoder_target_data = np.zeros((len(texts), self.max_txt_length, self.num_decoder_tokens), dtype='float32')
+        encoder_input = np.zeros((len(texts), self.image_height, self.image_width, 1), dtype='float32')
+
+        decoder_input_size = self.max_txt_length + 2 if is_training else 1
+        decoder_input = np.zeros((len(texts), decoder_input_size, len(self.vocabulary)), dtype='float32')
+
+        decoder_output_size = self.max_txt_length + 2
+        decoder_output = np.zeros((len(texts), decoder_output_size, len(self.vocabulary)), dtype='float32')
 
         for sample_index, (filename, target_text) in enumerate(zip(filenames, texts)):
-            # Load the image
-            input_image = self.load_image(filename)
-            encoder_input_data[sample_index] = input_image
+            # load the image
+            encoder_input[sample_index] = self.load_image(filename)
 
-            for char_pos, char in enumerate([self.SOS] + list(target_text) + [self.EOS]):
-                # decoder_target_data is one ahead of decoder_input_data
-                decoder_input_data[sample_index, char_pos, self.character_index[char]] = 1.
-                if char_pos > 0:
-                    # decoder_target_data will be ahead by one timestep and will not include the start character.
-                    decoder_target_data[sample_index, char_pos - 1, self.character_index[char]] = 1.
-            decoder_input_data[sample_index, char_pos + 1:, self.character_index[self.PAD]] = 1.
-            decoder_target_data[sample_index, char_pos:, self.character_index[self.PAD]] = 1.
-        return [encoder_input_data, decoder_input_data], decoder_target_data
+            # decoder input
+            if is_training:
+                decoder_input[sample_index, :, :] = self.vocabulary.one_hot_encode(target_text, decoder_input_size, sos=True, eos=True)
+            else:
+                decoder_input[sample_index, :, :] = self.vocabulary.one_hot_encode('', 1, sos=True, eos=False)
+
+            # decoder output
+            decoder_output[sample_index, :, :] = self.vocabulary.one_hot_encode(target_text, decoder_output_size, eos=True)
+
+        return [encoder_input, decoder_input], decoder_output
 
     def load_image(self, filename):
         image = cv2.imread(filename)
@@ -63,9 +62,6 @@ class VectorizerOCR:
 
         return image
 
-    def tokens(self):
-        return self.target_characters
-
 
 class VectorizedBatchGenerator:
 
@@ -77,7 +73,7 @@ class VectorizedBatchGenerator:
         for i in range(0, len(l), n):
             yield l[i:i + n]
 
-    def flow_from_dataset(self, dataset: list):
+    def flow_from_dataset(self, dataset: list, is_training: bool = True):
         current_idx = 0
         batches = list(self.chunks(dataset, self.batch_size))
         while True:
@@ -86,4 +82,4 @@ class VectorizedBatchGenerator:
             batch = batches[current_idx]
             images, texts = zip(*batch)
             current_idx += 1
-            yield self.vectorizer.vectorize(images, texts)
+            yield self.vectorizer.vectorize(images, texts, is_training)
