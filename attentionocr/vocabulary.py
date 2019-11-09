@@ -2,13 +2,13 @@ import numpy as np
 
 
 class Vocabulary:
+    PAD = '<PAD>'
     SOS = '<SOS>'
     EOS = '<EOS>'
-    PAD = '<PAD>'
     UNK = '<UNK>'
 
     def __init__(self, vocabulary: list):
-        self.characters = [self.SOS, self.EOS, self.PAD, self.UNK] + vocabulary
+        self.characters = [self.PAD, self.SOS, self.EOS, self.UNK] + vocabulary
         self.num_tokens = len(self.characters)
         self.character_index = dict([(char, i) for i, char in enumerate(self.characters)])
         self.character_reverse_index = dict((i, char) for char, i in self.character_index.items())
