@@ -6,7 +6,7 @@ from attentionocr.vectorizer import VectorizedBatchGenerator
 if __name__ == "__main__":
     voc = Vocabulary(list(string.ascii_lowercase) + list(string.digits))
     vec = VectorizerOCR(vocabulary=voc, image_width=320)
-    model = AttentionOCR(vectorizer=vec)
+    model = AttentionOCR(vectorizer=vec, vocabulary=voc)
     train_data = list(FlatDirectoryIterator('train/*.jpg'))
     test_data = list(FlatDirectoryIterator('test/*.jpg'))
 

@@ -7,15 +7,15 @@ from tensorflow.keras import Input, Sequential
 from tensorflow.keras.layers import MaxPool2D, Conv2D, LSTM, BatchNormalization, Dense
 from tqdm import tqdm
 
-from attentionocr import metrics
+from attentionocr import metrics, Vocabulary
 from .vectorizer import VectorizerOCR
 
 
 class AttentionOCR:
 
-    def __init__(self, vectorizer: VectorizerOCR, units=256):
+    def __init__(self, vectorizer: VectorizerOCR, vocabulary: Vocabulary, units=256):
         self.vectorizer = vectorizer
-        self.vocabulary = vectorizer.vocabulary
+        self.vocabulary = vocabulary
         self.max_input_txt_size = self.vectorizer.max_txt_length
         self.max_output_txt_size = self.vectorizer.max_txt_length + 2
         self.image_height = 32

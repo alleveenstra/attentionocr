@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from .vocabulary import Vocabulary
 
+
 class VectorizerOCR:
 
     def __init__(self, vocabulary: Vocabulary, image_height=32, image_width=320, max_txt_length: int = 40):
@@ -21,7 +22,7 @@ class VectorizerOCR:
         decoder_output = np.zeros((len(texts), decoder_output_size, len(self.vocabulary)), dtype='float32')
 
         for sample_index, (filename, target_text) in enumerate(zip(filenames, texts)):
-            # Load the image
+            # load the image
             encoder_input[sample_index] = self.load_image(filename)
 
             # decoder input
@@ -30,6 +31,7 @@ class VectorizerOCR:
             else:
                 decoder_input[sample_index, :, :] = self.vocabulary.one_hot_encode('', 1, sos=True, eos=False)
 
+            # decoder output
             decoder_output[sample_index, :, :] = self.vocabulary.one_hot_encode(target_text, decoder_output_size, eos=True)
 
         return [encoder_input, decoder_input], decoder_output
@@ -59,9 +61,6 @@ class VectorizerOCR:
         image = np.expand_dims(image, axis=2)
 
         return image
-
-    def tokens(self):
-        return self.target_characters
 
 
 class VectorizedBatchGenerator:
