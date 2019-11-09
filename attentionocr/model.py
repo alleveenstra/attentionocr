@@ -77,7 +77,7 @@ class AttentionOCR:
 
     def fit_generator(self, generator, steps_per_epoch: int = 1, epochs: int = 1, validation_data=None, validate_every_steps: int = 10) -> None:
         optimizer = tf.optimizers.RMSprop()
-        loss_function = tf.losses.categorical_crossentropy
+        loss_function = tf.losses.CategoricalCrossentropy()
         K.set_learning_phase(1)
         accuracy = 0
         for epoch in range(epochs):
@@ -87,7 +87,7 @@ class AttentionOCR:
                 x, y_true = next(generator)
                 with tf.GradientTape() as tape:
                     predictions = self.training_model(x)
-                    loss = tf.reduce_mean(loss_function(y_true, predictions))
+                    loss = loss_function(y_true, predictions)
                 variables = self.training_model.trainable_variables
                 gradients = tape.gradient(loss, variables)
                 optimizer.apply_gradients(zip(gradients, variables))
