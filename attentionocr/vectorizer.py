@@ -28,6 +28,7 @@ class VectorizerOCR:
             encoder_input_data[sample_index] = input_image
 
             for char_pos, char in enumerate([self.SOS] + list(target_text) + [self.EOS]):
+                # TODO fix index out of bounds
                 # decoder_target_data is one ahead of decoder_input_data
                 decoder_input_data[sample_index, char_pos, self.character_index[char]] = 1.
                 if char_pos > 0:

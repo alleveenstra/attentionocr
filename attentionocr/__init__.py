@@ -1,3 +1,3 @@
 from .loader import FlatDirectoryIterator
-from .model import KerasAttentionOCR
+from .model import AttentionOCR
 from .vectorizer import VectorizerOCR

@@ -6,10 +6,11 @@ import tensorflow as tf
 
 import numpy as np
 
-from .vectorizer import VectorizerOCR
+from attentionocr import metrics
+from .vectorizer import VectorizerOCR, VectorizedBatchGenerator
 
 
-class KerasAttentionOCR:
+class AttentionOCR:
 
     def __init__(self, vectorizer: VectorizerOCR, units=256):
         self.vectorizer = vectorizer
@@ -24,7 +25,7 @@ class KerasAttentionOCR:
         self.encoder_input = Input(shape=(self.image_height, None, 1), name="encoder_input")
         self.decoder_input = Input(shape=(None, self.num_tokens), name="decoder_input")
         
-        self.inference_image_encoding = Input(shape=(None, self.units), name="inference_image_encoding")
+        self.inference_encoder_output = Input(shape=(None, self.units), name="inference_encoder_output")
         self.inference_hidden_state = Input(shape=(self.units,), name="inference_hidden_state")
         self.inference_cell_state = Input(shape=(self.units,), name="inference_cell_state")
 
@@ -38,25 +39,38 @@ class KerasAttentionOCR:
         self.inference_decoder = self.build_inference_decoder_model()
 
     def build_training_model(self) -> tf.keras.Model:
-        image_encoding, hidden_state, cell_state = self.encoder(self.encoder_input)
+        encoder_output, hidden_state, cell_state = self.encoder(self.encoder_input)
         initial_state = [hidden_state, cell_state]
-        context_vectors, _ = self.attention(self.decoder_input, image_encoding)
+        context_vectors, _ = self.attention(self.decoder_input, encoder_output)
         x = tf.concat([self.decoder_input, context_vectors], axis=2)
         decoder_output, _, _ = self.decoder(x, initial_state=initial_state)
         scores = self.output(decoder_output)
         return tf.keras.Model([self.encoder_input, self.decoder_input], scores)
 
     def build_inference_encoder_model(self) -> tf.keras.Model:
-        image_encoding, state_h, state_c = self.encoder(self.encoder_input)
-        return Model(self.encoder_input, [image_encoding, state_h, state_c])
+        encoder_output, state_h, state_c = self.encoder(self.encoder_input)
+        return Model(self.encoder_input, [encoder_output, state_h, state_c])
 
     def build_inference_decoder_model(self) -> tf.keras.Model:
         initial_state = [self.inference_hidden_state, self.inference_cell_state]
-        context_vectors, _ = self.attention(self.decoder_input, self.inference_image_encoding)
+        context_vectors, _ = self.attention(self.decoder_input, self.inference_encoder_output)
         x = tf.concat([self.decoder_input, context_vectors], axis=2)
         decoder_output, hidden_state, cell_state = self.decoder(x, initial_state=initial_state)
         scores = self.output(decoder_output)
-        return tf.keras.Model([self.inference_image_encoding, self.inference_hidden_state, self.inference_cell_state, self.decoder_input], [scores, hidden_state, cell_state])
+        return tf.keras.Model([self.inference_encoder_output, self.inference_hidden_state, self.inference_cell_state, self.decoder_input], [scores, hidden_state, cell_state])
+
+    def fit_generator(self, generator, steps_per_epoch: int = None, epochs: int = 1, validation_data=None, validation_steps=None):
+        optimizer = tf.optimizers.Adam()
+        loss_function = tf.losses.CategoricalCrossentropy()
+        K.set_learning_phase(0)
+        for epoch in range(epochs):
+            for x, y_true in next(generator):
+                with tf.GradientTape() as tape:
+                    predictions = self.training_model.predict([x, y_true])
+                    loss = loss_function(y_true, predictions)
+                variables = self.training_model.trainable_variables
+                gradients = tape.gradient(loss, variables)
+                optimizer.apply_gradients(zip(gradients, variables))
 
     def fit(self, images: list, texts: list, epochs: int = 10, batch_size: int = None, validation_split=0.):
         self.training_model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
@@ -67,10 +81,6 @@ class KerasAttentionOCR:
         K.set_learning_phase(1)
         self.training_model.fit(X, y, batch_size=batch_size, epochs=epochs, validation_split=validation_split)
 
-    def fit_generator(self, generator, steps_per_epoch: int = None, epochs: int = 1, validation_data=None, validation_steps=None):
-        K.set_learning_phase(1)
-        self.training_model.fit_generator(generator, steps_per_epoch=steps_per_epoch, epochs=epochs, validation_data=validation_data, validation_steps=validation_steps)
-
     def predict(self, images) -> list:
         K.set_learning_phase(0)
         texts = []
@@ -78,23 +88,26 @@ class KerasAttentionOCR:
             # feed the input, retrieve encoder state vectors
             image = np.expand_dims(image, axis=0)
 
-            # encoder_input -> [encoder_states, state_h, state_c]
-            encoder_states, state_h, state_c = self.inference_encoder.predict(image)
+            # encoder_input -> [encoder_output, state_h, state_c]
+            encoder_output, state_h, state_c = self.inference_encoder.predict(image)
 
-            output_tokens = np.zeros((1, 1, self.num_tokens))
-            output_tokens[0, 0, self.vectorizer.character_index[self.vectorizer.SOS]] = 1.
+            decoder_input = np.zeros((1, 1, self.num_tokens))
+            decoder_input[0, 0, self.vectorizer.character_index[self.vectorizer.SOS]] = 1.
 
             text = ""
             while True:
-                # [self.encoder_states, self.hidden_state_input, self.cell_state_input, self.decoder_input] -> [scores, hidden_state, cell_state]
-                output_tokens, state_h, state_c = self.inference_decoder.predict([encoder_states, state_h, state_c, output_tokens])
+                # [self.encoder_output, self.hidden_state_input, self.cell_state_input, self.decoder_input] -> [scores, hidden_state, cell_state]
+                decoder_output, state_h, state_c = self.inference_decoder.predict([encoder_output, state_h, state_c, decoder_input])
 
                 # greedy search
-                sample_index = np.argmax(output_tokens[0, -1, :])
+                sample_index = np.argmax(decoder_output[0, -1, :])
                 sample = self.vectorizer.character_reverse_index[sample_index]
                 if sample == self.vectorizer.EOS or sample == self.vectorizer.PAD or len(text) > self.max_output_txt_size:
                     break
                 text += sample
+
+                # loop the decoder output into the decoder input
+                decoder_input = decoder_output
 
             texts.append(text)
         return texts
@@ -129,10 +142,10 @@ class Attention:
         # https://papers.nips.cc/paper/7181-attention-is-all-you-need.pdf
         self.query_projection = Dense(units)
 
-    def __call__(self, decoder_input, encoder_states):
+    def __call__(self, decoder_input, encoder_output):
         query = self.query_projection(decoder_input)
-        key = encoder_states
-        value = encoder_states
+        key = encoder_output
+        value = encoder_output
         logits = tf.matmul(query, tf.transpose(key, perm=[0, 2, 1]))
         attention_weights = tf.nn.softmax(logits)
         context_vectors = tf.matmul(attention_weights, value)
