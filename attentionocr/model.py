@@ -60,13 +60,13 @@ class AttentionOCR:
         scores = self.output(decoder_output)
         return tf.keras.Model([self.inference_encoder_output, self.inference_hidden_state, self.inference_cell_state, self.decoder_input], [scores, hidden_state, cell_state])
 
-    def fit_generator(self, generator, steps_per_epoch: int = 1, epochs: int = 1, validation_data=None):
+    def fit_generator(self, generator, steps_per_epoch: int = 1, epochs: int = 1, validation_data=None, validate_every_steps: int = 10):
         optimizer = tf.optimizers.RMSprop()
         loss_function = tf.losses.categorical_crossentropy
         K.set_learning_phase(1)
         for epoch in range(epochs):
             pbar = tqdm(range(steps_per_epoch))
-            for _ in pbar:
+            for step in pbar:
                 x, y_true = next(generator)
                 with tf.GradientTape() as tape:
                     predictions = self.training_model(x)
@@ -74,11 +74,11 @@ class AttentionOCR:
                 variables = self.training_model.trainable_variables
                 gradients = tape.gradient(loss, variables)
                 optimizer.apply_gradients(zip(gradients, variables))
-            if validation_data is not None:
-                x, y_true = next(validation_data)
-                y_pred = self.training_model(x)
-                accuracy = metrics.masked_accuracy(y_true, y_pred)
-                pbar.set_description("Test accuracy %.04f" % accuracy)
+                if step % validate_every_steps == 0 and validation_data is not None:
+                    x, y_true = next(validation_data)
+                    y_pred = self.training_model(x)
+                    accuracy = metrics.masked_accuracy(y_true, y_pred)
+                    pbar.set_postfix({"test_accuracy": "%.04f" % accuracy})
 
     def fit(self, images: list, texts: list, epochs: int = 10, batch_size: int = None, validation_split=0.):
         self.training_model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['accuracy'])
@@ -89,6 +89,12 @@ class AttentionOCR:
         K.set_learning_phase(1)
         self.training_model.fit(X, y, batch_size=batch_size, epochs=epochs, validation_split=validation_split)
 
+    def save(self, filepath):
+        self.training_model.save_weights(filepath=filepath)
+
+    def load(self, filepath):
+        self.training_model.load_weights(filepath=filepath)
+
     def predict(self, images) -> list:
         K.set_learning_phase(0)
         texts = []
@@ -96,8 +102,8 @@ class AttentionOCR:
             # feed the input, retrieve encoder state vectors
             image = np.expand_dims(image, axis=0)
 
-            # encoder_input -> [encoder_output, state_h, state_c]
-            encoder_output, state_h, state_c = self.inference_encoder.predict(image)
+            # encoder_input -> [encoder_output, hidden_state, cell_state]
+            encoder_output, hidden_state, cell_state = self.inference_encoder.predict(image)
 
             decoder_input = np.zeros((1, 1, self.num_tokens))
             decoder_input[0, 0, self.vectorizer.character_index[self.vectorizer.SOS]] = 1.
@@ -105,7 +111,7 @@ class AttentionOCR:
             text = ""
             while True:
                 # [self.encoder_output, self.hidden_state_input, self.cell_state_input, self.decoder_input] -> [scores, hidden_state, cell_state]
-                decoder_output, state_h, state_c = self.inference_decoder.predict([encoder_output, state_h, state_c, decoder_input])
+                decoder_output, hidden_state, cell_state = self.inference_decoder.predict([encoder_output, hidden_state, cell_state, decoder_input])
 
                 # greedy search
                 sample_index = np.argmax(decoder_output[0, -1, :])

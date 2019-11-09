@@ -3,6 +3,7 @@ train
 .idea
 venv
 *.pyc
+*.h5
 tests/out*
 dataset
 *.tgz
