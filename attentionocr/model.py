@@ -115,11 +115,9 @@ class AttentionOCR:
             y_pred, attention = self.visualisation_model.predict([input_image, decoder_input])
             text = self.vocabulary.one_hot_decode(y_pred, self.max_output_txt_size)
 
-            print('attention', attention.shape)
-
             step_size = float(image.shape[1]) / attention.shape[-1]
             for index, char_idx in enumerate(np.argmax(y_pred, axis=-1)[0]):
-                if char_idx == 0 or char_idx == 1:  # magic value for PAD, EOS
+                if char_idx < 3:  # magic value for PAD, EOS, SOS
                     break
                 heatmap = np.zeros(image.shape)
                 for location, strength in enumerate(attention[0, index, :]):
