@@ -115,6 +115,8 @@ class AttentionOCR:
             y_pred, attention = self.visualisation_model.predict([input_image, decoder_input])
             text = self.vocabulary.one_hot_decode(y_pred, self.max_output_txt_size)
 
+            print('attention', attention.shape)
+
             step_size = float(image.shape[1]) / attention.shape[-1]
             for index, char_idx in enumerate(np.argmax(y_pred, axis=-1)[0]):
                 if char_idx == 0 or char_idx == 1:  # magic value for PAD, EOS
@@ -137,10 +139,10 @@ class Encoder:
                   MaxPool2D(strides=(2, 2), padding='valid'),
                   BatchNormalization(),
                   Conv2D(256, (3, 3), padding='same', activation='relu'),
-                  MaxPool2D(strides=(2, 2), padding='valid'),
+                  MaxPool2D(strides=(2, 1), padding='valid'),
                   BatchNormalization(),
                   Conv2D(256, (3, 3), padding='valid', activation='relu'),
-                  MaxPool2D(strides=(2, 2), padding='valid'),
+                  MaxPool2D(strides=(2, 1), padding='valid'),
                   BatchNormalization()]
         self.cnn = Sequential(layers)
         self.lstm = LSTM(units, return_sequences=True, return_state=True)

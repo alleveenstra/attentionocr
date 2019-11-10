@@ -10,14 +10,14 @@ if __name__ == "__main__":
     train_data = list(FlatDirectoryIterator('train/*.jpg'))
     test_data = list(FlatDirectoryIterator('test/*.jpg'))
 
-    # generator = VectorizedBatchGenerator(vectorizer=vec)
-    # train_bgen = generator.flow_from_dataset(train_data)
-    # test_bgen = generator.flow_from_dataset(test_data, is_training=False)
-    # model.fit_generator(train_bgen, epochs=1, steps_per_epoch=1, validation_data=test_bgen)
+    generator = VectorizedBatchGenerator(vectorizer=vec)
+    train_bgen = generator.flow_from_dataset(train_data)
+    test_bgen = generator.flow_from_dataset(test_data, is_training=False)
+    model.fit_generator(train_bgen, epochs=1, steps_per_epoch=1, validation_data=test_bgen)
 
-    model.load('model.h5')
+    # model.load('model.h5')
 
-    for i in range(2):
+    for i in range(1):
         filename, text = test_data[i]
         image = vec.load_image(filename)
         pred = model.predict([image])[0]
