@@ -1,5 +1,6 @@
 from typing import List, Tuple
 
+import cv2
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras.backend as K
@@ -33,6 +34,7 @@ class AttentionOCR:
 
         self.training_model = self.build_training_model()
         self.inference_model = self.build_inference_model()
+        self.visualisation_model = self.build_inference_model(include_attention=True)
 
     def build_training_model(self) -> tf.keras.Model:
         encoder_output, hidden_state, cell_state = self.encoder(self.encoder_input)
@@ -43,18 +45,22 @@ class AttentionOCR:
         logits = self.output(decoder_output)
         return tf.keras.Model([self.encoder_input, self.decoder_input], logits)
 
-    def build_inference_model(self) -> tf.keras.Model:
+    def build_inference_model(self, include_attention: bool = False) -> tf.keras.Model:
         predictions = []
+        attentions = []
         prediction = self.decoder_input
         encoder_output, hidden_state, cell_state = self.encoder(self.encoder_input)
         for i in range(self.max_output_txt_size):
-            context_vectors, attention_weights = self.attention(prediction, encoder_output)
+            context_vectors, attention = self.attention(prediction, encoder_output)
+            attentions.append(attention)
             x = tf.concat([prediction, context_vectors], axis=2)
             decoder_output, hidden_state, cell_state = self.decoder(x, [hidden_state, cell_state])
             prediction = self.output(decoder_output)
             predictions.append(prediction)
-        logits = tf.concat(predictions, axis=1)
-        return tf.keras.Model([self.encoder_input, self.decoder_input], logits)
+        predictions = tf.concat(predictions, axis=1)
+        attentions = tf.concat(attentions, axis=1)
+        output = [predictions, attentions] if include_attention else predictions
+        return tf.keras.Model([self.encoder_input, self.decoder_input], output)
 
     def fit_generator(self, generator, steps_per_epoch: int = 1, epochs: int = 1, validation_data=None, validate_every_steps: int = 10) -> None:
         optimizer = tf.optimizers.RMSprop()
@@ -93,8 +99,33 @@ class AttentionOCR:
             decoder_input = np.zeros((1, 1, len(self.vocabulary)))
             decoder_input[0, :, :] = self.vocabulary.one_hot_encode('', 1, sos=True, eos=False)
 
-            decoder_output = self.inference_model.predict([image, decoder_input])
-            texts.append(self.vocabulary.one_hot_decode(decoder_output, self.max_output_txt_size))
+            y_pred = self.inference_model.predict([image, decoder_input])
+            texts.append(self.vocabulary.one_hot_decode(y_pred, self.max_output_txt_size))
+        return texts
+
+    def visualise(self, images) -> List[str]:
+        K.set_learning_phase(0)
+        texts = []
+        for image in images[:1]:
+            input_image = np.expand_dims(image, axis=0)
+
+            decoder_input = np.zeros((1, 1, len(self.vocabulary)))
+            decoder_input[0, :, :] = self.vocabulary.one_hot_encode('', 1, sos=True, eos=False)
+
+            y_pred, attention = self.visualisation_model.predict([input_image, decoder_input])
+            text = self.vocabulary.one_hot_decode(y_pred, self.max_output_txt_size)
+            print(text)
+
+            step_size = float(image.shape[1]) / attention.shape[-1]
+            for index, char_idx in enumerate(np.argmax(y_pred, axis=-1)[0]):
+                if char_idx == 0 or char_idx == 1:  # magic value for PAD, EOS
+                    break
+                heatmap = np.zeros(image.shape)
+                for location, strength in enumerate(attention[0, index, :]):
+                    heatmap[:, int(location * step_size) : int((location + 1) * step_size)] = strength * 255.0
+                filtered_image = (image + 1.0) * 127.5 * 0.4 + heatmap * 0.6
+                cv2.imwrite('out/%s-%d-%s.png' % (text, index, text[index]), filtered_image)
+
         return texts
 
 
