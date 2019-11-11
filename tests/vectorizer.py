@@ -29,27 +29,27 @@ class VectorizerTest(unittest.TestCase):
         voc = Vocabulary(['a', 'b'])
         vec = Vectorizer(voc, image_height=32, image_width=144, max_txt_length=10)
 
-        input, output = vec.transform(['test_100x32.png'], ['aabbaabbaabbaa'])
+        inputs, output = vec.transform(['test_100x32.png'], ['aabbaabbaabbaa'])
 
         assert(output.shape[-1] == len(voc))
 
-        print(np.argmax(input[1], axis=-1))
+        print(np.argmax(inputs[1], axis=-1))
         print(np.argmax(output, axis=-1))
 
     def test_shapes(self):
         voc = Vocabulary(['a', 'b'])
         vec = Vectorizer(voc, image_height=32, image_width=144, max_txt_length=10)
 
-        input, output = vec.transform(['test_100x32.png'], ['aabbaabbaabbaa'], is_training=False)
+        inputs, output = vec.transform(['test_100x32.png'], ['aabbaabbaabbaa'], is_training=False)
 
-        assert(input[0].shape[0] == 1)
-        assert(input[0].shape[1] == 32)
-        assert(input[0].shape[2] == 144)
-        assert(input[0].shape[3] == 1)
+        assert(inputs[0].shape[0] == 1)
+        assert(inputs[0].shape[1] == 32)
+        assert(inputs[0].shape[2] == 144)
+        assert(inputs[0].shape[3] == 1)
 
-        assert(input[1].shape[0] == 1)
-        assert(input[1].shape[1] == 1)
-        assert(input[1].shape[2] == len(voc))
+        assert(inputs[1].shape[0] == 1)
+        assert(inputs[1].shape[1] == 1)
+        assert(inputs[1].shape[2] == len(voc))
 
         assert(output.shape[0] == 1)
         assert(output.shape[1] >= 10)
