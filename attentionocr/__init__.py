@@ -1,4 +1,5 @@
-from .loader import FlatDirectoryIterator
+from .datasource import FlatDirectoryDataSource, CSVDataSource
 from .vocabulary import Vocabulary
-from .vectorizer import VectorizerOCR, VectorizedBatchGenerator
+from .vectorizer import Vectorizer
+from .batch import BatchGenerator
 from .model import AttentionOCR
