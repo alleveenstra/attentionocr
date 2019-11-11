@@ -34,7 +34,8 @@ class CSVDataSource:
                 file, txt = line.split(sep=sep, maxsplit=1)
                 file = os.path.abspath(os.path.join(directory, file))
                 txt = txt.strip()
-                self._examples.append((file, txt))
+                if os.path.isfile(file):
+                    self._examples.append((file, txt))
         random.shuffle(self._examples)
         if max_items is not None:
             self._examples = self._examples[:max_items]

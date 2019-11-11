@@ -4,8 +4,8 @@ train
 venv
 out
 dataset
+/*.h5
+/tests/out*
+/*.tgz
+/sample.txt
 *.pyc
-*.h5
-tests/out*
-*.tgz
-sample.txt

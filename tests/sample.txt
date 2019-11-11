@@ -1,0 +1,6 @@
+filename;label
+test_100x32.png;test_100x32
+test_288x32.png;test_288x32
+test_50x16.png;test_50x16
+test_600x100.png;test_600x100
+
