@@ -13,6 +13,7 @@ class FlatDirectoryDataSource:
         self._current_index = 0
 
     def __iter__(self):
+        self._current_index = 0
         return self
 
     def __next__(self):
@@ -29,19 +30,20 @@ class CSVDataSource:
     def __init__(self, directory: str, filename: str, max_items: int = None, sep: str = ';'):
         self._examples = []
         with open(os.path.join(directory, filename), 'r') as fp:
-            line = fp.readline()
-            if sep in line:
-                file, txt = line.split(sep=sep, maxsplit=1)
-                file = os.path.abspath(os.path.join(directory, file))
-                txt = txt.strip()
-                if os.path.isfile(file):
-                    self._examples.append((file, txt))
+            for line in fp.readlines():
+                if sep in line:
+                    file, txt = line.split(sep=sep, maxsplit=1)
+                    file = os.path.abspath(os.path.join(directory, file))
+                    txt = txt.strip()
+                    if os.path.isfile(file):
+                        self._examples.append((file, txt))
         random.shuffle(self._examples)
         if max_items is not None:
             self._examples = self._examples[:max_items]
         self._current_index = 0
 
     def __iter__(self):
+        self._current_index = 0
         return self
 
     def __next__(self):
