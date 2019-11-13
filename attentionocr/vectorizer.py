@@ -1,6 +1,8 @@
+from typing import List
+
 import numpy as np
 
-from .image import ImageUtil
+from attentionocr.image import ImageUtil
 from .vocabulary import Vocabulary
 
 
@@ -11,11 +13,14 @@ class Vectorizer:
         self._max_txt_length = max_txt_length
         self._image_height = image_height
         self._image_width = image_width
-        self._image_util = ImageUtil(self._image_height, self._image_width)
+        self._image_util = ImageUtil(image_height, image_width)
         self._transform = transform
 
-    def transform(self, filenames: list, texts: list, is_training: bool = True):
-        assert len(filenames) == len(texts)
+    def load_image(self, image):
+        return self._image_util.load(image)
+
+    def transform(self, images: List[np.ndarray], texts: List[str], is_training: bool = True):
+        assert len(images) == len(texts)
         encoder_input = np.zeros((len(texts), self._image_height, self._image_width, 1), dtype='float32')
 
         decoder_input_size = self._max_txt_length if is_training else 1
@@ -24,9 +29,9 @@ class Vectorizer:
         decoder_output_size = self._max_txt_length
         decoder_output = np.zeros((len(texts), decoder_output_size, len(self._vocabulary)), dtype='float32')
 
-        for sample_index, (filename, target_text) in enumerate(zip(filenames, texts)):
+        for sample_index, (image, target_text) in enumerate(zip(images, texts)):
             # load the image
-            encoder_input[sample_index] = self._image_util.load(filename)
+            encoder_input[sample_index] = image
 
             # transform the text
             if self._transform == "lowercase":

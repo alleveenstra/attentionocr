@@ -7,12 +7,12 @@ if __name__ == "__main__":
     voc = Vocabulary(list(string.ascii_lowercase) + list(string.digits) + [' ', '-', '.', ':', '?', '!', '<', '>', '#', '@', '(', ')', '$', '%', '&'])
     vec = Vectorizer(vocabulary=voc, image_width=320, max_txt_length=42)
     model = AttentionOCR(vocabulary=voc, max_txt_length=42)
-    train_data = list(CSVDataSource('/home/alle/CRNN_6/Train/', 'sample.txt'))
-    test_data = list(CSVDataSource('/home/alle/CRNN_6/Validation/', 'sample.txt'))
+    train_data = CSVDataSource('/home/alle/CRNN_6/Train/', 'sample.txt')
+    test_data = CSVDataSource('/home/alle/CRNN_6/Validation/', 'sample.txt')
 
     generator = BatchGenerator(vectorizer=vec, batch_size=512)
-    train_bgen = generator.flow_from_dataset(train_data)
-    test_bgen = generator.flow_from_dataset(test_data, is_training=False)
+    train_bgen = generator.flow_from_datasource(train_data)
+    test_bgen = generator.flow_from_datasource(test_data, is_training=False)
     model.fit_generator(train_bgen, epochs=1000, steps_per_epoch=100, validation_data=test_bgen)
 
     # model.load('model.h5')
