@@ -10,13 +10,18 @@ def masked_accuracy(y_true: tf.Tensor, y_pred: tf.Tensor) -> float:
     return tf.reduce_sum(correct) / tf.reduce_sum(mask)
 
 
-def fan_loss(y_pred, y_true, attention_weights, attention_target) -> tf.Tensor:
+def fan_loss(y_true, y_pred, attention_weights, attention_target) -> tf.Tensor:
         indices = tf.argmax(y_true, axis=2)
         mask = tf.equal(indices, 0)
         mask = (1 - tf.cast(mask, dtype=tf.float32))
-        loss = tf.losses.categorical_crossentropy(y_pred, y_true)
+        loss = tf.losses.categorical_crossentropy(y_true, y_pred)
+        loss = tf.reduce_sum(loss * mask) / tf.reduce_sum(mask)
 
+        attn_mask = tf.less_equal(indices, 3)
+        attn_mask = (1 - tf.cast(attn_mask, dtype=tf.float32))
         attn_loss = tf.losses.categorical_crossentropy(attention_weights, attention_target)
-        return (tf.reduce_sum(loss * mask) + tf.reduce_sum(attn_loss * mask)) / tf.reduce_sum(mask) / 2.0
+        attn_loss = tf.reduce_sum(attn_loss * attn_mask) / tf.reduce_sum(attn_mask)
+
+        return (loss + attn_loss) / 2.0
 
         # return tf.reduce_sum(loss * mask) / tf.reduce_sum(mask)
