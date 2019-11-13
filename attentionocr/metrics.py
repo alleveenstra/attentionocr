@@ -17,11 +17,11 @@ def fan_loss(y_true, y_pred, attention_weights, attention_target) -> tf.Tensor:
         loss = tf.losses.categorical_crossentropy(y_true, y_pred)
         loss = tf.reduce_sum(loss * mask) / tf.reduce_sum(mask)
 
-        attn_mask = tf.less_equal(indices, 3)
-        attn_mask = (1 - tf.cast(attn_mask, dtype=tf.float32))
+        attn_char_mask = tf.less_equal(indices, 3)
+        attn_char_mask = (1 - tf.cast(attn_char_mask, dtype=tf.float32))
+        attn_sample_mask = tf.equal(-1, tf.reduce_mean(attention_target, axis=2))
+        attn_sample_mask = (1 - tf.cast(attn_sample_mask, dtype=tf.float32))
         attn_loss = tf.losses.categorical_crossentropy(attention_weights, attention_target)
-        attn_loss = tf.reduce_sum(attn_loss * attn_mask) / tf.reduce_sum(attn_mask)
+        attn_loss = tf.reduce_sum(attn_loss * attn_char_mask * attn_sample_mask) / tf.reduce_sum(attn_char_mask)
 
         return (loss + attn_loss) / 2.0
-
-        # return tf.reduce_sum(loss * mask) / tf.reduce_sum(mask)

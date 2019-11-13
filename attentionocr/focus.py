@@ -1,4 +1,5 @@
 import json
+import os
 
 from tensorflow.keras import Sequential, Input, Model
 from tensorflow.keras.layers import Conv2D, MaxPool2D
@@ -24,30 +25,34 @@ class Focus:
         self.model = Model(img, hacky(img))
 
     def create_focus(self, filename):
-        b = np.zeros((42, 76)) + (1 / 76.0)
 
-        with open('scripts/train/aaevtqdyfjlhzbrcljgcutq.json') as f:
+        if not os.path.exists(filename):
+            return -np.ones((42, 76))
+
+        with open(filename) as f:
             meta = json.load(f)
 
+        b = np.zeros((42, 76)) + (1 / 76.0)
+
+        a = np.zeros((len(meta), 32, 320, 1))
+
         for index, aap in enumerate(meta):
-            a = np.zeros((1, 32, 320, 1))
             x0 = aap['x']
             x1 = x0 + aap['width']
-            a[0, :, x0:x1, :] = 1.0
+            a[index, :, x0:x1, :] = 1.0
 
-            out = self.model.predict(a)
-
-            out = out.squeeze(axis=0)
+        blaat = self.model.predict(a)
+        for index in range(blaat.shape[0]):
+            out = blaat[index]
             out = out.squeeze(axis=0)
             out = out.transpose()
             out = out[0, :]
+
+            if np.max(out) == 0.0:
+                out = out + (1 / 76.0)
+
             out = out / np.sum(out)
 
             b[index, :] = out
 
         return b
-
-        # cv2.imwrite('test01.png', b * 255)
-
-
-
