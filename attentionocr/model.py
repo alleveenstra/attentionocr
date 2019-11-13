@@ -66,6 +66,8 @@ class AttentionOCR:
         for epoch in range(epochs):
             pbar = tqdm(range(steps_per_epoch))
             pbar.set_description("Epoch %03d / %03d " % (epoch, epochs))
+            epoch_loss = []
+            epoch_accuracy = []
             for step in pbar:
                 x, y_true = next(generator)
                 with tf.GradientTape() as tape:
@@ -78,7 +80,9 @@ class AttentionOCR:
                     x, y_true = next(validation_data)
                     y_pred = self._inference_model(x)
                     accuracy = metrics.masked_accuracy(y_true, y_pred)
-                pbar.set_postfix({"test_accuracy": "%.4f" % accuracy, "loss": "%.4f" % loss.numpy()})
+                    epoch_accuracy.append(accuracy)
+                epoch_loss.append(loss)
+                pbar.set_postfix({"test_accuracy": "%.4f" % accuracy, "batch_loss": "%.4f" % loss.numpy(), "epoch_loss": "%.4f" % np.mean(epoch_loss), "epoch_accuracy": np.mean(epoch_accuracy)})
 
     def save(self, filepath) -> None:
         self._training_model.save_weights(filepath=filepath)

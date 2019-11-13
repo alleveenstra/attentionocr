@@ -6,12 +6,13 @@ from .vocabulary import Vocabulary
 
 class Vectorizer:
 
-    def __init__(self, vocabulary: Vocabulary, image_height=32, image_width=320, max_txt_length: int = 42):
+    def __init__(self, vocabulary: Vocabulary, image_height=32, image_width=320, max_txt_length: int = 42, transform: str = "lowercase"):
         self._vocabulary = vocabulary
         self._max_txt_length = max_txt_length
         self._image_height = image_height
         self._image_width = image_width
         self._image_util = ImageUtil(self._image_height, self._image_width)
+        self._transform = transform
 
     def transform(self, filenames: list, texts: list, is_training: bool = True):
         assert len(filenames) == len(texts)
@@ -26,6 +27,10 @@ class Vectorizer:
         for sample_index, (filename, target_text) in enumerate(zip(filenames, texts)):
             # load the image
             encoder_input[sample_index] = self._image_util.load(filename)
+
+            # transform the text
+            if self._transform == "lowercase":
+                target_text = target_text.lower()
 
             # decoder input
             if is_training:

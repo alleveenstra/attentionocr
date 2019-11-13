@@ -8,7 +8,7 @@ class Vocabulary:
     unk = '<UNK>'
 
     def __init__(self, vocabulary: list):
-        self._characters = [self.pad, self.sos, self.eos, self.unk] + vocabulary
+        self._characters = [self.pad, self.sos, self.eos, self.unk] + sorted(vocabulary)
         self._character_index = dict([(char, i) for i, char in enumerate(self._characters)])
         self._character_reverse_index = dict((i, char) for char, i in self._character_index.items())
 
@@ -23,7 +23,10 @@ class Vocabulary:
         txt += [self.pad] * (length - len(txt))
         encoding = np.zeros((length, len(self)), dtype='float32')
         for char_pos, char in enumerate(txt):
-            encoding[char_pos, self._character_index[char]] = 1.
+            if char in self._character_index:
+                encoding[char_pos, self._character_index[char]] = 1.
+            else:
+                encoding[char_pos, self._character_index[self.unk]] = 1.
         return encoding
 
     def one_hot_decode(self, one_hot: np.ndarray, max_length: int) -> str:
