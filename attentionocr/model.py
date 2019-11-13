@@ -35,11 +35,11 @@ class AttentionOCR:
     def build_training_model(self) -> tf.keras.Model:
         encoder_output, hidden_state, cell_state = self._encoder(self._encoder_input)
         initial_state = [hidden_state, cell_state]
-        context_vectors, _ = self._attention(self._decoder_input, encoder_output)
+        context_vectors, attention_weights = self._attention(self._decoder_input, encoder_output)
         x = tf.concat([self._decoder_input, context_vectors], axis=2)
         decoder_output, _, _ = self._decoder(x, initial_state=initial_state)
         logits = self._output(decoder_output)
-        return tf.keras.Model([self._encoder_input, self._decoder_input], logits)
+        return tf.keras.Model([self._encoder_input, self._decoder_input], [logits, attention_weights])
 
     def build_inference_model(self, include_attention: bool = False) -> tf.keras.Model:
         predictions = []
@@ -60,7 +60,6 @@ class AttentionOCR:
 
     def fit_generator(self, generator, steps_per_epoch: int = 1, epochs: int = 1, validation_data=None, validate_every_steps: int = 10) -> None:
         optimizer = tf.optimizers.RMSprop()
-        loss_function = tf.losses.CategoricalCrossentropy()
         K.set_learning_phase(1)
         accuracy = 0
         for epoch in range(epochs):
@@ -69,15 +68,15 @@ class AttentionOCR:
             epoch_loss = []
             epoch_accuracy = []
             for step in pbar:
-                x, y_true = next(generator)
+                x, y_true, attention_focus = next(generator)
                 with tf.GradientTape() as tape:
-                    predictions = self._training_model(x)
-                    loss = loss_function(y_true, predictions)
+                    predictions, attention_weights = self._training_model(x)
+                    loss = metrics.fan_loss(y_true, predictions, attention_weights, attention_focus)
                 variables = self._training_model.trainable_variables
                 gradients = tape.gradient(loss, variables)
                 optimizer.apply_gradients(zip(gradients, variables))
                 if step % validate_every_steps == 0 and validation_data is not None:
-                    x, y_true = next(validation_data)
+                    x, y_true, _ = next(validation_data)
                     y_pred = self._inference_model(x)
                     accuracy = metrics.masked_accuracy(y_true, y_pred)
                     epoch_accuracy.append(accuracy)
@@ -143,6 +142,16 @@ class Encoder:
                   MaxPool2D(strides=(2, 1), padding='valid'),
                   BatchNormalization()]
         self.cnn = Sequential(layers)
+
+        self.hacky = Sequential([Conv2D(64, (3, 3), padding='same', activation='relu', kernel_initializer='ones', bias_initializer='zeros'),
+                  MaxPool2D(strides=(2, 2), padding='valid'),
+                  Conv2D(128, (3, 3), padding='same', activation='relu', kernel_initializer='ones', bias_initializer='zeros'),
+                  MaxPool2D(strides=(2, 2), padding='valid'),
+                  Conv2D(256, (3, 3), padding='same', activation='relu', kernel_initializer='ones', bias_initializer='zeros'),
+                  MaxPool2D(strides=(2, 1), padding='valid'),
+                  Conv2D(256, (3, 3), padding='valid', activation='relu', kernel_initializer='ones', bias_initializer='zeros'),
+                  MaxPool2D(strides=(2, 1), padding='valid')])
+
         self.lstm = LSTM(units, return_sequences=True, return_state=True)
 
     def __call__(self, encoder_input) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:

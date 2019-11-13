@@ -4,6 +4,9 @@ train
 venv
 out
 dataset
+/scripts/test
+/scripts/train
+/script/*.ttf
 /*.h5
 /tests/out*
 /*.tgz
