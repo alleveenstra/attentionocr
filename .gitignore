@@ -1,6 +1,7 @@
 test
 train
 .idea
+logs
 venv
 out
 dataset

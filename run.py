@@ -10,13 +10,14 @@ if __name__ == "__main__":
     train_data = CSVDataSource('/home/alle/CRNN_6/Train/', 'sample.txt')
     test_data = CSVDataSource('/home/alle/CRNN_6/Validation/', 'sample.txt')
 
+    model.load('model.h5')
+
     generator = BatchGenerator(vectorizer=vec, batch_size=512)
     train_bgen = generator.flow_from_datasource(train_data)
     test_bgen = generator.flow_from_datasource(test_data, is_training=False)
-    model.fit_generator(train_bgen, epochs=1000, steps_per_epoch=100, validation_data=test_bgen)
+    model.fit_generator(train_bgen, epochs=4000, steps_per_epoch=100, validation_data=test_bgen)
 
-    # model.load('model.h5')
-    model.save('model.h5')
+    model.save('model2.h5')
 
     for i in range(1):
         filename, text = test_data[i]
