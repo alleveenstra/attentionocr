@@ -44,6 +44,7 @@ class Focus:
 
         attention_target = self.model.predict(a)
         b = attention_target.squeeze(axis=1)[:, :, 0]
-        c = tf.linalg.normalize(b) * 10.
+        c, _ = tf.linalg.normalize(b)
+        c = c * 10.
         d = tf.nn.softmax(c, axis=0)
         return d
