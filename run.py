@@ -5,14 +5,14 @@ from attentionocr import Vectorizer, AttentionOCR, CSVDataSource, Vocabulary, Ba
 if __name__ == "__main__":
     voc = Vocabulary(list(string.ascii_lowercase) + list(string.digits) + [' ', '-', '.', ':', '?', '!', '<', '>', '#', '@', '(', ')', '$', '%', '&'])
     vec = Vectorizer(vocabulary=voc, image_width=320, max_txt_length=42)
-    model = AttentionOCR(vocabulary=voc, max_txt_length=42)
+    model = AttentionOCR(vocabulary=voc, max_txt_length=42, focus_attention=True)
     train_data = FlatDirectoryDataSource('scripts/train/*.jpg')
     test_data = FlatDirectoryDataSource('scripts/test/*.jpg')
 
     generator = BatchGenerator(vectorizer=vec, batch_size=64)
     train_bgen = generator.flow_from_datasource(train_data)
     test_bgen = generator.flow_from_datasource(test_data, is_training=False)
-    model.fit_generator(train_bgen, epochs=10, steps_per_epoch=10, validation_data=test_bgen)
+    model.fit_generator(train_bgen, epochs=1, steps_per_epoch=1, validation_data=test_bgen)
 
     # model.load('model.h5')
     model.save('model.h5')

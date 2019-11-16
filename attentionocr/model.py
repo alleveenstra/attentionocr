@@ -13,11 +13,12 @@ from attentionocr import metrics, Vocabulary
 
 class AttentionOCR:
 
-    def __init__(self, vocabulary: Vocabulary, max_txt_length: int = 42, units: int = 256):
+    def __init__(self, vocabulary: Vocabulary, max_txt_length: int = 42, focus_attention: bool = True, units: int = 256):
         self._vocabulary = vocabulary
         self._max_txt_length = max_txt_length
         self._image_height = 32
         self._units = units
+        self._focus_attention = focus_attention
 
         # Build the model.
         self._encoder_input = Input(shape=(self._image_height, None, 1), name="encoder_input")
@@ -71,7 +72,10 @@ class AttentionOCR:
                 x, y_true, attention_focus = next(generator)
                 with tf.GradientTape() as tape:
                     predictions, attention_weights = self._training_model(x)
-                    loss = metrics.fan_loss(y_true, predictions, attention_weights, attention_focus)
+                    if self._focus_attention:
+                        loss = metrics.fan_loss(y_true, predictions, attention_weights, attention_focus)
+                    else:
+                        loss = metrics.masked_loss(y_true, predictions)
                 variables = self._training_model.trainable_variables
                 gradients = tape.gradient(loss, variables)
                 optimizer.apply_gradients(zip(gradients, variables))
