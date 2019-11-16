@@ -13,14 +13,16 @@ class Focus:
 
         small = Constant(value=0.01)
 
-        hacky = Sequential([Conv2D(64, (3, 3), padding='same', activation='relu', kernel_initializer=small, bias_initializer='zeros'),
-                                 MaxPool2D(strides=(2, 2), padding='valid'),
-                                 Conv2D(128, (3, 3), padding='same', activation='relu', kernel_initializer=small, bias_initializer='zeros'),
-                                 MaxPool2D(strides=(2, 2), padding='valid'),
-                                 Conv2D(256, (3, 3), padding='same', activation='relu', kernel_initializer=small, bias_initializer='zeros'),
-                                 MaxPool2D(strides=(2, 1), padding='valid'),
-                                 Conv2D(256, (3, 3), padding='valid', activation='relu', kernel_initializer=small, bias_initializer='zeros'),
-                                 MaxPool2D(strides=(2, 1), padding='valid')])
+        hacky = Sequential([
+            Conv2D(64, (3, 3), padding='same', activation='relu', kernel_initializer=small, bias_initializer='zeros'),
+            MaxPool2D(strides=(2, 2), padding='valid'),
+            Conv2D(128, (3, 3), padding='same', activation='relu', kernel_initializer=small, bias_initializer='zeros'),
+            MaxPool2D(strides=(2, 2), padding='valid'),
+            Conv2D(256, (3, 3), padding='same', activation='relu', kernel_initializer=small, bias_initializer='zeros'),
+            MaxPool2D(strides=(2, 1), padding='valid'),
+            Conv2D(256, (3, 3), padding='valid', activation='relu', kernel_initializer=small, bias_initializer='zeros'),
+            MaxPool2D(strides=(2, 1), padding='valid')
+        ])
 
         img = Input(shape=(32, 320, 1))
         self.model = Model(img, hacky(img))
@@ -42,6 +44,6 @@ class Focus:
 
         attention_target = self.model.predict(a)
         b = attention_target.squeeze(axis=1)[:, :, 0]
-        c = b / b.max() * 10.
+        c = tf.linalg.normalize(b) * 10.
         d = tf.nn.softmax(c, axis=0)
         return d

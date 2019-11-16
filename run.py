@@ -9,10 +9,10 @@ if __name__ == "__main__":
     train_data = FlatDirectoryDataSource('scripts/train/*.jpg')
     test_data = FlatDirectoryDataSource('scripts/test/*.jpg')
 
-    generator = BatchGenerator(vectorizer=vec, batch_size=3)
+    generator = BatchGenerator(vectorizer=vec, batch_size=64)
     train_bgen = generator.flow_from_datasource(train_data)
     test_bgen = generator.flow_from_datasource(test_data, is_training=False)
-    model.fit_generator(train_bgen, epochs=1000, steps_per_epoch=5, validation_data=test_bgen)
+    model.fit_generator(train_bgen, epochs=1, steps_per_epoch=5, validation_data=test_bgen)
 
     # model.load('model.h5')
     model.save('model.h5')

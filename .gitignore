@@ -6,6 +6,8 @@ out
 dataset
 /scripts/test
 /scripts/train
+/scripts/fonts
+/scripts/images
 /script/*.ttf
 /*.h5
 /tests/out*
