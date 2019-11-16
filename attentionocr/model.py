@@ -128,29 +128,22 @@ class AttentionOCR:
 
 
 class Encoder:
-    def __init__(self, units):
-        layers = [Conv2D(64, (3, 3), padding='same', activation='relu'),
-                  MaxPool2D(strides=(2, 2), padding='valid'),
-                  BatchNormalization(),
-                  Conv2D(128, (3, 3), padding='same', activation='relu'),
-                  MaxPool2D(strides=(2, 2), padding='valid'),
-                  BatchNormalization(),
-                  Conv2D(256, (3, 3), padding='same', activation='relu'),
-                  MaxPool2D(strides=(2, 1), padding='valid'),
-                  BatchNormalization(),
-                  Conv2D(256, (3, 3), padding='valid', activation='relu'),
-                  MaxPool2D(strides=(2, 1), padding='valid'),
-                  BatchNormalization()]
-        self.cnn = Sequential(layers)
+    layers = [Conv2D(64, (3, 3), padding='same', activation='relu'),
+              MaxPool2D(strides=(2, 2), padding='valid'),
+              BatchNormalization(),
+              Conv2D(128, (3, 3), padding='same', activation='relu'),
+              MaxPool2D(strides=(2, 2), padding='valid'),
+              BatchNormalization(),
+              Conv2D(256, (3, 3), padding='same', activation='relu'),
+              MaxPool2D(strides=(2, 1), padding='valid'),
+              BatchNormalization(),
+              Conv2D(256, (3, 3), padding='valid', activation='relu'),
+              MaxPool2D(strides=(2, 1), padding='valid'),
+              BatchNormalization()]
 
-        self.hacky = Sequential([Conv2D(64, (3, 3), padding='same', activation='relu', kernel_initializer='ones', bias_initializer='zeros'),
-                  MaxPool2D(strides=(2, 2), padding='valid'),
-                  Conv2D(128, (3, 3), padding='same', activation='relu', kernel_initializer='ones', bias_initializer='zeros'),
-                  MaxPool2D(strides=(2, 2), padding='valid'),
-                  Conv2D(256, (3, 3), padding='same', activation='relu', kernel_initializer='ones', bias_initializer='zeros'),
-                  MaxPool2D(strides=(2, 1), padding='valid'),
-                  Conv2D(256, (3, 3), padding='valid', activation='relu', kernel_initializer='ones', bias_initializer='zeros'),
-                  MaxPool2D(strides=(2, 1), padding='valid')])
+    def __init__(self, units):
+
+        self.cnn = Sequential(self.layers)
 
         self.lstm = LSTM(units, return_sequences=True, return_state=True)
 
