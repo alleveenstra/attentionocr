@@ -18,7 +18,7 @@ if __name__ == "__main__":
     model.save('model.h5')
 
     for i in range(1):
-        filename, text = test_data[i]
+        filename, text = next(test_data)
         image = vec._image_util.load(filename)
         pred = model.predict([image])[0]
         model.visualise([image])
