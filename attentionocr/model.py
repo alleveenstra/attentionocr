@@ -22,7 +22,9 @@ class AttentionOCR:
         self._focus_attention = focus_attention
 
         log_dir = os.path.join("logs", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-        self.summary_writer = tf.summary.create_file_writer(logdir=log_dir)
+        self.tensorboard_writer = tf.summary.create_file_writer(logdir=log_dir)
+        self.tensorboard_loss = tf.keras.metrics.Mean()
+        self.tensorboard_accuracy = tf.keras.metrics.Mean()
 
         # Build the model.
         self._encoder_input = Input(shape=(self._image_height, None, 1), name="encoder_input")
@@ -64,12 +66,10 @@ class AttentionOCR:
         return tf.keras.Model([self._encoder_input, self._decoder_input], output)
 
     def fit_generator(self, generator, steps_per_epoch: int = 1, epochs: int = 1, validation_data=None, validate_every_steps: int = 10) -> None:
-        optimizer = tf.optimizers.RMSprop()
+        optimizer = tf.optimizers.Nadam(clipnorm=1.0)
         K.set_learning_phase(1)
         accuracy = 0
         for epoch in range(epochs):
-            tensorboard_loss = tf.keras.metrics.Mean()
-            tensorboard_accuracy = tf.keras.metrics.Mean()
             pbar = tqdm(range(steps_per_epoch))
             pbar.set_description("Epoch %03d / %03d " % (epoch, epochs))
             for step in pbar:
@@ -87,12 +87,15 @@ class AttentionOCR:
                     x, y_true, _ = next(validation_data)
                     y_pred = self._inference_model(x)
                     accuracy = metrics.masked_accuracy(y_true, y_pred)
-                    tensorboard_accuracy(accuracy)
-                tensorboard_loss(loss.numpy())
+                    self.tensorboard_accuracy(accuracy)
+                self.tensorboard_loss(loss.numpy())
                 pbar.set_postfix({"accuracy": "%.4f" % accuracy, "loss": "%.4f" % loss.numpy()})
-                with self.summary_writer.as_default():
-                    tf.summary.scalar('epoch_loss_avg', tensorboard_loss.result(), step=optimizer.iterations)
-                    tf.summary.scalar('epoch_accuracy', tensorboard_accuracy.result(), step=optimizer.iterations)
+                self.update_tensorboard(optimizer)
+
+    def update_tensorboard(self, optimizer):
+        with self.tensorboard_writer.as_default():
+            tf.summary.scalar('epoch_loss_avg', self.tensorboard_loss.result(), step=optimizer.iterations)
+            tf.summary.scalar('epoch_accuracy', self.tensorboard_accuracy.result(), step=optimizer.iterations)
 
     def save(self, filepath) -> None:
         self._training_model.save_weights(filepath=filepath)
