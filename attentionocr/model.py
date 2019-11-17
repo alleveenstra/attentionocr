@@ -18,6 +18,7 @@ class AttentionOCR:
         self._vocabulary = vocabulary
         self._max_txt_length = max_txt_length
         self._image_height = 32
+        self._image_width = 320
         self._units = units
         self._focus_attention = focus_attention
 
@@ -29,7 +30,7 @@ class AttentionOCR:
         self.tensorboard_accuracy = tf.keras.metrics.Mean()
 
         # Build the model.
-        self._encoder_input = Input(shape=(self._image_height, None, 1), name="encoder_input")
+        self._encoder_input = Input(shape=(self._image_height, self._image_width, 1), name="encoder_input")
         self._decoder_input = Input(shape=(None, len(self._vocabulary)), name="decoder_input")
 
         self._encoder = Encoder(self._units)

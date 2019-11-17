@@ -1,6 +1,6 @@
 import string
 
-from attentionocr import Vectorizer, AttentionOCR, CSVDataSource, Vocabulary, BatchGenerator, FlatDirectoryDataSource
+from attentionocr import Vectorizer, AttentionOCR, CSVDataSource, Vocabulary, BatchGenerator, FlatDirectoryDataSource, Encoder
 
 if __name__ == "__main__":
     voc = Vocabulary()

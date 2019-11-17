@@ -1,7 +1,7 @@
 from typing import Generator, Tuple
 import logging
 
-from attentionocr import Focus
+from .focus import Focus
 from .vectorizer import Vectorizer
 
 
@@ -13,7 +13,7 @@ class BatchGenerator:
     def __init__(self, vectorizer: Vectorizer, batch_size: int = 64):
         self._vectorizer = vectorizer
         self._batch_size = batch_size
-        self._focus = Focus()
+        self._focus = Focus(vectorizer.encoding_width)
 
     def flow_from_datasource(self, datasource: Generator[Tuple[str, str], None, None], is_training: bool = True):
         batch = []

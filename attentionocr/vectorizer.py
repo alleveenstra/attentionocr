@@ -2,7 +2,8 @@ from typing import List
 
 import numpy as np
 
-from attentionocr.image import ImageUtil
+from .layers import Encoder
+from .image import ImageUtil
 from .vocabulary import Vocabulary
 
 
@@ -13,6 +14,7 @@ class Vectorizer:
         self._max_txt_length = max_txt_length
         self._image_height = image_height
         self._image_width = image_width
+        self.encoding_width = Encoder.get_width(image_width)
         self._image_util = ImageUtil(image_height, image_width)
         self._transform = transform
 
@@ -29,7 +31,7 @@ class Vectorizer:
         decoder_output_size = self._max_txt_length
         decoder_output = np.zeros((len(texts), decoder_output_size, len(self._vocabulary)), dtype='float32')
 
-        attention_focus = np.zeros((len(texts), decoder_output_size, 77), dtype='float32')
+        attention_focus = np.zeros((len(texts), decoder_output_size, self.encoding_width), dtype='float32')
 
 
         for sample_index, (image, focus, target_text) in enumerate(zip(images, focuses, texts)):
