@@ -14,12 +14,14 @@ from attentionocr import metrics, Vocabulary, Encoder, Attention, Decoder, Decod
 
 class AttentionOCR:
 
-    def __init__(self, vocabulary: Vocabulary, max_txt_length: int = 42, focus_attention: bool = True, units: int = 256):
+    def __init__(self, vocabulary: Vocabulary, max_txt_length: int = 42, optimizer=tf.optimizers.Nadam(), focus_attention: bool = True, units: int = 256):
         self._vocabulary = vocabulary
         self._max_txt_length = max_txt_length
         self._image_height = 32
         self._units = units
         self._focus_attention = focus_attention
+
+        self.optimizer = optimizer
 
         log_dir = os.path.join("logs", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
         self.tensorboard_writer = tf.summary.create_file_writer(logdir=log_dir)
@@ -66,7 +68,6 @@ class AttentionOCR:
         return tf.keras.Model([self._encoder_input, self._decoder_input], output)
 
     def fit_generator(self, generator, steps_per_epoch: int = 1, epochs: int = 1, validation_data=None, validate_every_steps: int = 10) -> None:
-        optimizer = tf.optimizers.Nadam(clipnorm=1.0)
         K.set_learning_phase(1)
         accuracy = 0
         for epoch in range(epochs):
@@ -82,7 +83,7 @@ class AttentionOCR:
                         loss = metrics.masked_loss(y_true, predictions)
                 variables = self._training_model.trainable_variables
                 gradients = tape.gradient(loss, variables)
-                optimizer.apply_gradients(zip(gradients, variables))
+                self.optimizer.apply_gradients(zip(gradients, variables))
                 if step % validate_every_steps == 0 and validation_data is not None:
                     x, y_true, _ = next(validation_data)
                     y_pred = self._inference_model(x)
@@ -90,7 +91,7 @@ class AttentionOCR:
                     self.tensorboard_accuracy(accuracy)
                 self.tensorboard_loss(loss.numpy())
                 pbar.set_postfix({"accuracy": "%.4f" % accuracy, "loss": "%.4f" % loss.numpy()})
-                self.update_tensorboard(optimizer)
+                self.update_tensorboard(self.optimizer)
 
     def update_tensorboard(self, optimizer):
         with self.tensorboard_writer.as_default():

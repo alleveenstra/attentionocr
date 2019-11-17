@@ -14,12 +14,12 @@ class Encoder:
 
               Conv2D(256, (3, 3), padding='same', activation='relu'),
               BatchNormalization(),
-              Conv2D(256, (3, 3), padding='same', activation='relu'),
+              # Conv2D(256, (3, 3), padding='same', activation='relu'),
               MaxPool2D(strides=(2, 1), padding='valid'),
 
               Conv2D(512, (3, 3), padding='same', activation='relu'),
               BatchNormalization(),
-              Conv2D(512, (3, 3), padding='same', activation='relu'),
+              # Conv2D(512, (3, 3), padding='same', activation='relu'),
               MaxPool2D(strides=(2, 1), padding='valid'),
 
               Conv2D(512, (2, 2), padding='valid', activation='relu'),

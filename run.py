@@ -3,7 +3,7 @@ import string
 from attentionocr import Vectorizer, AttentionOCR, CSVDataSource, Vocabulary, BatchGenerator, FlatDirectoryDataSource
 
 if __name__ == "__main__":
-    voc = Vocabulary(list(string.ascii_lowercase) + list(string.digits) + [' ', '-', '.', ':', '?', '!', '<', '>', '#', '@', '(', ')', '$', '%', '&'])
+    voc = Vocabulary()
     vec = Vectorizer(vocabulary=voc, image_width=320, max_txt_length=42)
     model = AttentionOCR(vocabulary=voc, max_txt_length=42, focus_attention=True)
     train_data = FlatDirectoryDataSource('scripts/train/*.jpg')

@@ -1,4 +1,9 @@
+import string
+
 import numpy as np
+
+
+default_vocabulary = list(string.ascii_lowercase) + list(string.digits) + [' ', '-', '.', ':', '?', '!', '<', '>', '#', '@', '(', ')', '$', '%', '&']
 
 
 class Vocabulary:
@@ -7,7 +12,7 @@ class Vocabulary:
     eos = '<EOS>'
     unk = '<UNK>'
 
-    def __init__(self, vocabulary: list):
+    def __init__(self, vocabulary: list = default_vocabulary):
         self._characters = [self.pad, self.sos, self.eos, self.unk] + sorted(vocabulary)
         self._character_index = dict([(char, i) for i, char in enumerate(self._characters)])
         self._character_reverse_index = dict((i, char) for char, i in self._character_index.items())
