@@ -29,7 +29,7 @@ class Vectorizer:
         decoder_output_size = self._max_txt_length
         decoder_output = np.zeros((len(texts), decoder_output_size, len(self._vocabulary)), dtype='float32')
 
-        attention_focus = np.zeros((len(texts), decoder_output_size, 77), dtype='float32')
+        attention_focus = np.zeros((len(texts), decoder_output_size, 76), dtype='float32')
 
 
         for sample_index, (image, focus, target_text) in enumerate(zip(images, focuses, texts)):

@@ -12,10 +12,10 @@ from .model import Encoder
 class Focus:
     def create_focus(self, filename):
         if not os.path.exists(filename):
-            return -np.ones((42, 77))
+            return -np.ones((42, 76))
         with open(filename) as f:
             meta = json.load(f)
-        q = np.zeros((42, 77))
+        q = np.zeros((42, 76))
         for index, char in enumerate(meta):
             x0 = char['x']
             x1 = x0 + char['width']
@@ -27,7 +27,7 @@ class Focus:
                 #     x0 -= math.ceil(layer.kernel_size[1] / 2.)
                 #     x1 += math.ceil(layer.kernel_size[1] / 2.)
             x0 = max(math.floor(x0), 0)
-            x1 = min(math.ceil(x1), 77)
+            x1 = min(math.ceil(x1), 76)
             q[index, x0:x1] = 10.0
         q = tf.nn.softmax(q, axis=0)
         return q

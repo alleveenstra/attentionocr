@@ -6,24 +6,39 @@ from tensorflow.keras.layers import MaxPool2D, Conv2D, LSTM, BatchNormalization,
 
 
 class Encoder:
-    layers = [Conv2D(64, (3, 3), padding='same', activation='relu'),
-              MaxPool2D(strides=(2, 2), padding='valid'),
+    # layers = [Conv2D(64, (3, 3), padding='same', activation='relu'),
+    #           MaxPool2D(strides=(2, 2), padding='valid'),
+    #
+    #           Conv2D(128, (3, 3), padding='same', activation='relu'),
+    #           MaxPool2D(strides=(2, 2), padding='valid'),
+    #
+    #           Conv2D(256, (3, 3), padding='same', activation='relu'),
+    #           BatchNormalization(),
+    #           # Conv2D(256, (3, 3), padding='same', activation='relu'),
+    #           MaxPool2D(strides=(2, 1), padding='valid'),
+    #
+    #           Conv2D(512, (3, 3), padding='same', activation='relu'),
+    #           BatchNormalization(),
+    #           # Conv2D(512, (3, 3), padding='same', activation='relu'),
+    #           MaxPool2D(strides=(2, 1), padding='valid'),
+    #
+    #           Conv2D(512, (2, 2), padding='valid', activation='relu'),
+    #           BatchNormalization(),
+    # ]
 
-              Conv2D(128, (3, 3), padding='same', activation='relu'),
-              MaxPool2D(strides=(2, 2), padding='valid'),
-
-              Conv2D(256, (3, 3), padding='same', activation='relu'),
-              BatchNormalization(),
-              # Conv2D(256, (3, 3), padding='same', activation='relu'),
-              MaxPool2D(strides=(2, 1), padding='valid'),
-
-              Conv2D(512, (3, 3), padding='same', activation='relu'),
-              BatchNormalization(),
-              # Conv2D(512, (3, 3), padding='same', activation='relu'),
-              MaxPool2D(strides=(2, 1), padding='valid'),
-
-              Conv2D(512, (2, 2), padding='valid', activation='relu'),
-              BatchNormalization(),
+    layers = [
+        Conv2D(64, (3, 3), padding='same', activation='relu'),
+        MaxPool2D(strides=(2, 2), padding='valid'),
+        BatchNormalization(),
+        Conv2D(128, (3, 3), padding='same', activation='relu'),
+        MaxPool2D(strides=(2, 2), padding='valid'),
+        BatchNormalization(),
+        Conv2D(256, (3, 3), padding='same', activation='relu'),
+        MaxPool2D(strides=(2, 1), padding='valid'),
+        BatchNormalization(),
+        Conv2D(256, (3, 3), padding='valid', activation='relu'),
+        MaxPool2D(strides=(2, 1), padding='valid'),
+        BatchNormalization()
     ]
 
     def __init__(self, units):
