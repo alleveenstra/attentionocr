@@ -32,12 +32,15 @@ class Encoder:
         Conv2D(64, (3, 3), padding='same', activation='relu'),
         BatchNormalization(),
         MaxPool2D(strides=(2, 2), padding='valid'),
+
         Conv2D(128, (3, 3), padding='same', activation='relu'),
         BatchNormalization(),
         MaxPool2D(strides=(2, 2), padding='valid'),
+
         Conv2D(256, (3, 3), padding='same', activation='relu'),
         BatchNormalization(),
         MaxPool2D(strides=(2, 1), padding='valid'),
+
         Conv2D(512, (3, 3), padding='valid', activation='relu'),
         BatchNormalization(),
         MaxPool2D(strides=(2, 1), padding='valid'),
@@ -57,13 +60,13 @@ class Encoder:
     @staticmethod
     def get_width(width):
         for layer in Encoder.layers:
-            if type(layer) is Conv2D and layer.padding == 'valid':
-                width -= 1
             if type(layer) is MaxPool2D:
-                width /= float(layer.strides[1])
-                if layer.padding == 'valid':
-                    width -= 1
-        return math.ceil(width)
+                assert layer.strides == layer.pool_size
+                width = math.ceil(width / layer.pool_size[1])
+            elif type(layer) is Conv2D and layer.padding == 'valid':
+                assert layer.strides == (1, 1)
+                width = width - math.ceil(layer.kernel_size[1] / 2.0)
+        return width
 
 class Attention:
     def __init__(self, units: int):
