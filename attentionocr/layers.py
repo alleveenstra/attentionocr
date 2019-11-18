@@ -31,19 +31,19 @@ class Encoder:
     layers = [
         Conv2D(64, (3, 3), padding='same', activation='relu'),
         BatchNormalization(),
-        MaxPool2D(strides=(2, 2), padding='valid'),
+        MaxPool2D(pool_size=(2, 2), strides=(2, 2), padding='valid'),
 
         Conv2D(128, (3, 3), padding='same', activation='relu'),
         BatchNormalization(),
-        MaxPool2D(strides=(2, 2), padding='valid'),
+        MaxPool2D(pool_size=(2, 2), strides=(2, 2), padding='valid'),
 
         Conv2D(256, (3, 3), padding='same', activation='relu'),
         BatchNormalization(),
-        MaxPool2D(strides=(2, 1), padding='valid'),
+        MaxPool2D(pool_size=(2, 1), strides=(2, 1), padding='valid'),
 
         Conv2D(512, (3, 3), padding='valid', activation='relu'),
         BatchNormalization(),
-        MaxPool2D(strides=(2, 1), padding='valid'),
+        MaxPool2D(pool_size=(2, 1), strides=(2, 1), padding='valid'),
     ]
 
     def __init__(self, units):
