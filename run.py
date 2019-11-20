@@ -13,7 +13,7 @@ if __name__ == "__main__":
     model.fit_generator(train_bgen, epochs=10, steps_per_epoch=10, validation_data=test_bgen)
 
     # model.load('model.h5')
-    # model.save('model.h5')
+    model.save('model.h5')
 
     for i in range(1):
         filename, text = next(test_data)
