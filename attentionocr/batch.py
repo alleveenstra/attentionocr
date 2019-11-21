@@ -1,6 +1,7 @@
 from typing import Generator, Tuple
 import logging
 
+from .focus import Focus
 from .vectorizer import Vectorizer
 
 
@@ -12,6 +13,7 @@ class BatchGenerator:
     def __init__(self, vectorizer: Vectorizer, batch_size: int = 64):
         self._vectorizer = vectorizer
         self._batch_size = batch_size
+        self._focus = Focus(vectorizer.encoding_width)
 
     def flow_from_datasource(self, datasource: Generator[Tuple[str, str], None, None], is_training: bool = True):
         batch = []
@@ -19,10 +21,12 @@ class BatchGenerator:
             filename, text = next(datasource)
             try:
                 image = self._vectorizer.load_image(filename)
-                batch.append([image, text])
+                focus = self._focus.create_focus(filename.replace('.jpg', '.json'))
+                batch.append([image, focus, text])
             except Exception as e:
                 LOG.warning(e)
+
             if len(batch) == self._batch_size:
-                images, texts = zip(*batch)
-                yield self._vectorizer.transform(images, texts, is_training)
+                images, focuses, texts = zip(*batch)
+                yield self._vectorizer.transform(images, focuses, texts, is_training)
                 batch = []

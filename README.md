@@ -12,6 +12,14 @@ This repository depends upon the following:
 *  Tensorflow 2.0
 *  Python 3.6+
 
+## References
+
+This work is based on the following work:
+
+*  [Attention Is All You Need](https://arxiv.org/abs/1706.03762)
+*  [Focusing Attention: Towards Accurate Text Recognition in Natural Images
+](https://arxiv.org/abs/1709.02054)
+
 ## To do
 
 *  Make image height variable

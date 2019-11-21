@@ -1,31 +1,36 @@
 import datetime
 import os
-from typing import List, Tuple
+from typing import List
 
 import cv2
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras.backend as K
 from tensorflow.keras import Input, Sequential
-from tensorflow.keras.layers import MaxPool2D, Conv2D, LSTM, BatchNormalization, Dense
 from tqdm import tqdm
 
-from attentionocr import metrics, Vocabulary
+from attentionocr import metrics, Vocabulary, Encoder, Attention, Decoder, DecoderOutput
 
 
 class AttentionOCR:
 
-    def __init__(self, vocabulary: Vocabulary, max_txt_length: int = 42, units: int = 256):
+    def __init__(self, vocabulary: Vocabulary, max_txt_length: int = 42, optimizer=tf.optimizers.Nadam(), focus_attention: bool = True, units: int = 256):
         self._vocabulary = vocabulary
         self._max_txt_length = max_txt_length
         self._image_height = 32
+        self._image_width = 320
         self._units = units
+        self._focus_attention = focus_attention
+
+        self.optimizer = optimizer
 
         log_dir = os.path.join("logs", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-        self.summary_writer = tf.summary.create_file_writer(logdir=log_dir)
+        self.tensorboard_writer = tf.summary.create_file_writer(logdir=log_dir)
+        self.tensorboard_loss = tf.keras.metrics.Mean()
+        self.tensorboard_accuracy = tf.keras.metrics.Mean()
 
         # Build the model.
-        self._encoder_input = Input(shape=(self._image_height, None, 1), name="encoder_input")
+        self._encoder_input = Input(shape=(self._image_height, self._image_width, 1), name="encoder_input")
         self._decoder_input = Input(shape=(None, len(self._vocabulary)), name="decoder_input")
 
         self._encoder = Encoder(self._units)
@@ -40,11 +45,11 @@ class AttentionOCR:
     def build_training_model(self) -> tf.keras.Model:
         encoder_output, hidden_state, cell_state = self._encoder(self._encoder_input)
         initial_state = [hidden_state, cell_state]
-        context_vectors, _ = self._attention(self._decoder_input, encoder_output)
+        context_vectors, attention_weights = self._attention(self._decoder_input, encoder_output)
         x = tf.concat([self._decoder_input, context_vectors], axis=2)
         decoder_output, _, _ = self._decoder(x, initial_state=initial_state)
         logits = self._output(decoder_output)
-        return tf.keras.Model([self._encoder_input, self._decoder_input], logits)
+        return tf.keras.Model([self._encoder_input, self._decoder_input], [logits, attention_weights])
 
     def build_inference_model(self, include_attention: bool = False) -> tf.keras.Model:
         predictions = []
@@ -64,32 +69,35 @@ class AttentionOCR:
         return tf.keras.Model([self._encoder_input, self._decoder_input], output)
 
     def fit_generator(self, generator, steps_per_epoch: int = 1, epochs: int = 1, validation_data=None, validate_every_steps: int = 10) -> None:
-        optimizer = tf.optimizers.RMSprop()
-        loss_function = tf.losses.CategoricalCrossentropy()
         K.set_learning_phase(1)
+        accuracy = 0
         for epoch in range(epochs):
-            tensorboard_loss = tf.keras.metrics.Mean()
-            tensorboard_accuracy = tf.keras.metrics.Mean()
             pbar = tqdm(range(steps_per_epoch))
             pbar.set_description("Epoch %03d / %03d " % (epoch, epochs))
             for step in pbar:
-                x, y_true = next(generator)
+                x, y_true, attention_focus = next(generator)
                 with tf.GradientTape() as tape:
-                    predictions = self._training_model(x)
-                    loss = loss_function(y_true, predictions)
-                    tensorboard_loss(loss)
+                    predictions, attention_weights = self._training_model(x)
+                    if self._focus_attention:
+                        loss = metrics.fan_loss(y_true, predictions, attention_weights, attention_focus)
+                    else:
+                        loss = metrics.masked_loss(y_true, predictions)
                 variables = self._training_model.trainable_variables
                 gradients = tape.gradient(loss, variables)
-                optimizer.apply_gradients(zip(gradients, variables))
+                self.optimizer.apply_gradients(zip(gradients, variables))
                 if step % validate_every_steps == 0 and validation_data is not None:
-                    x, y_true = next(validation_data)
+                    x, y_true, _ = next(validation_data)
                     y_pred = self._inference_model(x)
                     accuracy = metrics.masked_accuracy(y_true, y_pred)
-                    tensorboard_accuracy(accuracy)
-                    pbar.set_postfix({"accuracy": "%.4f" % accuracy, "loss": "%.4f" % loss.numpy()})
-                with self.summary_writer.as_default():
-                    tf.summary.scalar('epoch_loss_avg', tensorboard_loss.result(), step=optimizer.iterations)
-                    tf.summary.scalar('epoch_accuracy', tensorboard_accuracy.result(), step=optimizer.iterations)
+                    self.tensorboard_accuracy(accuracy)
+                self.tensorboard_loss(loss.numpy())
+                pbar.set_postfix({"accuracy": "%.4f" % accuracy, "loss": "%.4f" % loss.numpy()})
+                self.update_tensorboard(self.optimizer)
+
+    def update_tensorboard(self, optimizer):
+        with self.tensorboard_writer.as_default():
+            tf.summary.scalar('epoch_loss_avg', self.tensorboard_loss.result(), step=optimizer.iterations)
+            tf.summary.scalar('epoch_accuracy', self.tensorboard_accuracy.result(), step=optimizer.iterations)
 
     def save(self, filepath) -> None:
         self._training_model.save_weights(filepath=filepath)
@@ -133,57 +141,3 @@ class AttentionOCR:
                 cv2.imwrite('out/%s-%d-%s.png' % (text, index, text[index]), filtered_image)
 
         return texts
-
-
-class Encoder:
-    def __init__(self, units):
-        layers = [Conv2D(64, (3, 3), padding='same', activation='relu'),
-                  MaxPool2D(strides=(2, 2), padding='valid'),
-                  BatchNormalization(),
-                  Conv2D(128, (3, 3), padding='same', activation='relu'),
-                  MaxPool2D(strides=(2, 2), padding='valid'),
-                  BatchNormalization(),
-                  Conv2D(256, (3, 3), padding='same', activation='relu'),
-                  MaxPool2D(strides=(2, 1), padding='valid'),
-                  BatchNormalization(),
-                  Conv2D(256, (3, 3), padding='valid', activation='relu'),
-                  MaxPool2D(strides=(2, 1), padding='valid'),
-                  BatchNormalization()]
-        self.cnn = Sequential(layers)
-        self.lstm = LSTM(units, return_sequences=True, return_state=True)
-
-    def __call__(self, encoder_input) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
-        out = self.cnn(encoder_input)
-        out = tf.squeeze(out, axis=1)
-        return self.lstm(out)
-
-
-class Attention:
-    def __init__(self, units: int):
-        # https://papers.nips.cc/paper/7181-attention-is-all-you-need.pdf
-        self.query_projection = Dense(units)
-
-    def __call__(self, decoder_input, encoder_output) -> Tuple[tf.Tensor, tf.Tensor]:
-        query = self.query_projection(decoder_input)
-        key = encoder_output
-        value = encoder_output
-        logits = tf.matmul(query, tf.transpose(key, perm=[0, 2, 1]))
-        attention_weights = tf.nn.softmax(logits)
-        context_vectors = tf.matmul(attention_weights, value)
-        return [context_vectors, attention_weights]
-
-
-class Decoder:
-    def __init__(self, units):
-        self.lstm = LSTM(units, return_sequences=True, return_state=True)
-
-    def __call__(self, decoder_input, initial_state) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
-        return self.lstm(decoder_input, initial_state)
-
-
-class DecoderOutput:
-    def __init__(self, vocab_size):
-        self.dense = Dense(vocab_size, activation='softmax')
-
-    def __call__(self, decoder_output) -> tf.Tensor:
-        return self.dense(decoder_output)
