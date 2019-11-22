@@ -26,8 +26,6 @@ class AttentionOCR:
 
         log_dir = os.path.join("logs", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
         self.tensorboard_writer = tf.summary.create_file_writer(logdir=log_dir)
-        self.tensorboard_loss = tf.keras.metrics.Mean()
-        self.tensorboard_accuracy = tf.keras.metrics.Mean()
 
         # Build the model.
         self._encoder_input = Input(shape=(self._image_height, self._image_width, 1), name="encoder_input")
@@ -82,22 +80,27 @@ class AttentionOCR:
                         loss = metrics.fan_loss(y_true, predictions, attention_weights, attention_focus)
                     else:
                         loss = metrics.masked_loss(y_true, predictions)
+                    with self.tensorboard_writer.as_default():
+                        tf.summary.scalar('train_loss', loss.numpy(), step=self.optimizer.iterations)
                 variables = self._training_model.trainable_variables
                 gradients = tape.gradient(loss, variables)
                 self.optimizer.apply_gradients(zip(gradients, variables))
                 if step % validate_every_steps == 0 and validation_data is not None:
-                    x, y_true, _ = next(validation_data)
+                    # determine the real test accuracy using the inference model
+                    x, y_true, attention_focus = next(validation_data)
                     y_pred = self._inference_model(x)
                     accuracy = metrics.masked_accuracy(y_true, y_pred)
-                    self.tensorboard_accuracy(accuracy)
-                self.tensorboard_loss(loss.numpy())
-                pbar.set_postfix({"accuracy": "%.4f" % accuracy, "loss": "%.4f" % loss.numpy()})
-                self.update_tensorboard(self.optimizer)
-
-    def update_tensorboard(self, optimizer):
-        with self.tensorboard_writer.as_default():
-            tf.summary.scalar('epoch_loss_avg', self.tensorboard_loss.result(), step=optimizer.iterations)
-            tf.summary.scalar('epoch_accuracy', self.tensorboard_accuracy.result(), step=optimizer.iterations)
+                    with self.tensorboard_writer.as_default():
+                        tf.summary.scalar('accuracy', accuracy, step=self.optimizer.iterations)
+                    # determine the test loss using the training model
+                    predictions, attention_weights = self._training_model(x)
+                    if self._focus_attention:
+                        test_loss = metrics.fan_loss(y_true, predictions, attention_weights, attention_focus)
+                    else:
+                        test_loss = metrics.masked_loss(y_true, predictions)
+                    with self.tensorboard_writer.as_default():
+                        tf.summary.scalar('test_loss', test_loss.numpy(), step=self.optimizer.iterations)
+                pbar.set_postfix({"test accuracy": "%.4f" % accuracy, "test loss": test_loss.numpy(), "loss": "%.4f" % loss.numpy()})
 
     def save(self, filepath) -> None:
         self._training_model.save_weights(filepath=filepath)
