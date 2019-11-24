@@ -1,6 +1,11 @@
-from typing import List
+import json
+import math
+import os
+from typing import Tuple
 
 import numpy as np
+import tensorflow as tf
+from tensorflow.keras.layers import Conv2D, MaxPool2D
 
 from .layers import Encoder
 from .image import ImageUtil
@@ -14,43 +19,51 @@ class Vectorizer:
         self._max_txt_length = max_txt_length
         self._image_height = image_height
         self._image_width = image_width
-        self.encoding_width = Encoder.get_width(image_width)
+        self._encoding_width = Encoder.get_width(image_width)
         self._image_util = ImageUtil(image_height, image_width)
         self._transform = transform
 
-    def load_image(self, image):
+    def load_image(self, image) -> np.ndarray:
         return self._image_util.load(image)
 
-    def transform(self, images: List[np.ndarray], focuses: List[np.ndarray], texts: List[str], is_training: bool = True):
-        assert len(images) == len(texts)
-        encoder_input = np.zeros((len(texts), self._image_height, self._image_width, 1), dtype='float32')
+    def create_focus(self, filename) -> tf.Tensor:
+        if not os.path.exists(filename):
+            return -np.ones((self._max_txt_length, self._encoding_width))
+        with open(filename) as f:
+            meta = json.load(f)
+        q = np.zeros((self._max_txt_length, self._encoding_width))
+        for index, char in enumerate(meta):
+            x0 = char['x']
+            x1 = x0 + char['width']
+            for layer in Encoder.layers:
+                if type(layer) is MaxPool2D:
+                    x0 /= float(layer.pool_size[1])
+                    x1 /= float(layer.pool_size[1])
+            x0 = max(math.floor(x0), 0)
+            x1 = min(math.ceil(x1), self._encoding_width)
+            q[index, x0:x1] = 10.0
+        q = tf.nn.softmax(q, axis=0)
+        return q
+
+    def transform_text(self, target_text: str, is_training: bool = True) -> Tuple[np.ndarray, np.ndarray]:
 
         decoder_input_size = self._max_txt_length if is_training else 1
-        decoder_input = np.zeros((len(texts), decoder_input_size, len(self._vocabulary)), dtype='float32')
+        decoder_input = np.zeros((decoder_input_size, len(self._vocabulary)), dtype='float32')
 
         decoder_output_size = self._max_txt_length
-        decoder_output = np.zeros((len(texts), decoder_output_size, len(self._vocabulary)), dtype='float32')
+        decoder_output = np.zeros((decoder_output_size, len(self._vocabulary)), dtype='float32')
 
-        attention_focus = np.zeros((len(texts), decoder_output_size, self.encoding_width), dtype='float32')
+        # transform the text
+        if self._transform == "lowercase":
+            target_text = target_text.lower()
 
+        # decoder input
+        if is_training:
+            decoder_input[:, :] = self._vocabulary.one_hot_encode(target_text, decoder_input_size, sos=True, eos=True)
+        else:
+            decoder_input[:, :] = self._vocabulary.one_hot_encode('', 1, sos=True, eos=False)
 
-        for sample_index, (image, focus, target_text) in enumerate(zip(images, focuses, texts)):
-            # load the image
-            encoder_input[sample_index] = image
+        # decoder output
+        decoder_output[:, :] = self._vocabulary.one_hot_encode(target_text, decoder_output_size, eos=True)
 
-            attention_focus[sample_index, :, :] = focus
-
-            # transform the text
-            if self._transform == "lowercase":
-                target_text = target_text.lower()
-
-            # decoder input
-            if is_training:
-                decoder_input[sample_index, :, :] = self._vocabulary.one_hot_encode(target_text, decoder_input_size, sos=True, eos=True)
-            else:
-                decoder_input[sample_index, :, :] = self._vocabulary.one_hot_encode('', 1, sos=True, eos=False)
-
-            # decoder output
-            decoder_output[sample_index, :, :] = self._vocabulary.one_hot_encode(target_text, decoder_output_size, eos=True)
-
-        return [encoder_input, decoder_input], decoder_output, attention_focus
+        return decoder_input, decoder_output

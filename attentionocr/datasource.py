@@ -1,38 +1,23 @@
 import os
 import random
+import logging
 from glob import glob
-from typing import Optional
+from functools import partial
+
+from . import Vectorizer
 
 
-class FlatDirectoryDataSource:
-
-    def __init__(self, glob_pattern: str, max_items: Optional[int] = None, looping: bool = True):
-        self._examples = glob(glob_pattern)
-        random.shuffle(self._examples)
-        if max_items is not None:
-            self._examples = self._examples[:max_items]
-        self._current_index = 0
-        self._looping = looping
-
-    def __iter__(self):
-        self._current_index = 0
-        return self
-
-    def __next__(self):
-        if self._current_index >= len(self._examples):
-            if not self._looping:
-                raise StopIteration()
-            self._current_index = 0
-        filename = self._examples[self._current_index]
-        text = os.path.basename(filename).split('.')[0]  # text is the filename
-        self._current_index += 1
-        return filename, text
+LOG = logging.getLogger(__file__)
 
 
-class CSVDataSource:
+def FlatDirectoryDataSource(vectorizer: Vectorizer, glob_pattern: str, is_training: bool = False):
+    images = glob(glob_pattern)
+    examples = [(os.path.basename(image_file).split('.')[0], image_file, image_file.replace('.jpg', '.json')) for image_file in images]
+    return partial(examples_generator, examples=examples, vectorizer=vectorizer, is_training=is_training)
 
-    def __init__(self, directory: str, filename: str, max_items: Optional[int] = None, sep: str = ';', looping: bool = True):
-        self._examples = []
+
+def CSVDataSource(vectorizer: Vectorizer, directory: str, filename: str, sep: str = ';', is_training: bool = False):
+        examples = []
         with open(os.path.join(directory, filename), 'r') as fp:
             for line in fp.readlines():
                 if sep in line:
@@ -40,22 +25,17 @@ class CSVDataSource:
                     file = os.path.abspath(os.path.join(directory, file))
                     txt = txt.strip()
                     if os.path.isfile(file):
-                        self._examples.append((file, txt))
-        random.shuffle(self._examples)
-        if max_items is not None:
-            self._examples = self._examples[:max_items]
-        self._current_index = 0
-        self._looping = looping
+                        examples.append((txt, file, file.replace('.jpg', '.json')))
+        return partial(examples_generator, examples=examples, vectorizer=vectorizer, is_training=is_training)
 
-    def __iter__(self):
-        self._current_index = 0
-        return self
 
-    def __next__(self):
-        if self._current_index >= len(self._examples):
-            if not self._looping:
-                raise StopIteration()
-            self._current_index = 0
-        example = self._examples[self._current_index]
-        self._current_index += 1
-        return example
+def examples_generator(examples, vectorizer, is_training):
+    random.shuffle(examples)
+    for text, image_file, focus_file in examples:
+        try:
+            image = vectorizer.load_image(image_file)
+            focus = vectorizer.create_focus(focus_file)
+            decoder_input, decoder_output = vectorizer.transform_text(text, is_training)
+            yield image, decoder_input, decoder_output, focus
+        except Exception as e:
+            LOG.warning(e)

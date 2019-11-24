@@ -24,7 +24,9 @@ class AttentionOCR:
 
         self.optimizer = optimizer
 
-        log_dir = os.path.join("logs", datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+        self.stats = {}
+
+        log_dir = os.path.join("logs", datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S"))
         self.tensorboard_writer = tf.summary.create_file_writer(logdir=log_dir)
 
         # Build the model.
@@ -66,37 +68,45 @@ class AttentionOCR:
         output = [predictions, attentions] if include_attention else predictions
         return tf.keras.Model([self._encoder_input, self._decoder_input], output)
 
-    def fit_generator(self, generator, steps_per_epoch: int = 1, epochs: int = 1, validation_data=None, validate_every_steps: int = 10) -> None:
+    def fit_generator(self, generator, epochs: int = 1, batch_size: int = 64, validation_data=None, validate_every_steps: int = 20) -> None:
         K.set_learning_phase(1)
-        accuracy = 0
         for epoch in range(epochs):
-            pbar = tqdm(range(steps_per_epoch))
+            batches = generator.batch(batch_size)
+            pbar = tqdm(batches)
             pbar.set_description("Epoch %03d / %03d " % (epoch, epochs))
-            for step in pbar:
-                loss = self._training_step(generator)
-                if step % validate_every_steps == 0 and validation_data is not None:
-                    accuracy, test_loss = self._testing_step(validation_data)
-                pbar.set_postfix({"test accuracy": "%.4f" % accuracy, "test loss": test_loss, "training loss": "%.4f" % loss})
+            for batch in pbar:
+                loss = self._training_step(batch)
+                self.stats["training loss"] = "%.4f" % loss
+                self.stats["iterations"] = self.optimizer.iterations.numpy()
+                if self.optimizer.iterations % validate_every_steps == 0 and validation_data is not None:
+                    accuracies, losses = [], []
+                    for validation_batch in validation_data.batch(batch_size):
+                        accuracy, test_loss = self._testing_step(validation_batch)
+                        accuracies.append(accuracy)
+                        losses.append(test_loss)
+                    self.stats["test accuracy"] = np.mean(accuracies)
+                    self.stats["test loss"] = np.mean(losses)
+                pbar.set_postfix(self.stats)
 
-    def _training_step(self, generator) -> float:
-        x, y_true, attention_focus = next(generator)
+    def _training_step(self, batch) -> float:
+        x_image, x_decoder, y_true, attention_true = batch
         with tf.GradientTape() as tape:
-            predictions, attention_weights = self._training_model(x)
-            loss = self._apply_loss(y_true, predictions, attention_focus, attention_weights)
+            y_pred, attention_pred = self._training_model([x_image, x_decoder])
+            loss = self._apply_loss(y_true, y_pred, attention_true, attention_pred)
             self._update_tensorboard(train_loss=loss)
         variables = self._training_model.trainable_variables
         gradients = tape.gradient(loss, variables)
         self.optimizer.apply_gradients(zip(gradients, variables))
         return loss.numpy()
 
-    def _testing_step(self, validation_data) -> Tuple[float, float]:
+    def _testing_step(self, batch) -> Tuple[float, float]:
+        x_image, x_decoder, y_true, attention_true = batch
         # determine the real test accuracy using the inference model
-        x, y_true, attention_focus = next(validation_data)
-        y_pred = self._inference_model(x)
+        y_pred = self._inference_model([x_image, x_decoder])
         accuracy = metrics.masked_accuracy(y_true, y_pred)
         # determine the test loss using the training model
-        predictions, attention_weights = self._training_model(x)
-        test_loss = self._apply_loss(y_true, predictions, attention_focus, attention_weights)
+        y_pred, attention_pred = self._training_model([x_image, x_decoder])
+        test_loss = self._apply_loss(y_true, y_pred, attention_true, attention_pred)
         # Update the tensorboards
         self._update_tensorboard(test_loss=test_loss.numpy(), accuracy=accuracy)
         return accuracy, test_loss.numpy()

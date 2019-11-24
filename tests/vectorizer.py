@@ -30,7 +30,7 @@ class VectorizerTest(unittest.TestCase):
         voc = Vocabulary(['a', 'b'])
         vec = Vectorizer(voc, image_height=32, image_width=144, max_txt_length=10)
 
-        inputs, output = vec.transform(['test_100x32.png'], ['aabbaabbaabbaa'])
+        inputs, output = vec.transform_text(['test_100x32.png'], ['aabbaabbaabbaa'])
 
         self.assertEqual(len(voc), output.shape[-1])
 
@@ -41,7 +41,7 @@ class VectorizerTest(unittest.TestCase):
         voc = Vocabulary(['a', 'b'])
         vec = Vectorizer(voc, image_height=32, image_width=144, max_txt_length=10)
 
-        inputs, output = vec.transform(['test_100x32.png'], ['aabbaabbaabbaa'], is_training=False)
+        inputs, output = vec.transform_text(['test_100x32.png'], ['aabbaabbaabbaa'], is_training=False)
 
         self.assertEqual(1, inputs[0].shape[0])
         self.assertEqual(32, inputs[0].shape[1])

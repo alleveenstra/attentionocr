@@ -1,18 +1,18 @@
-from attentionocr import Vectorizer, AttentionOCR, CSVDataSource, Vocabulary, BatchGenerator, FlatDirectoryDataSource, Encoder
+import tensorflow as tf
+from attentionocr import Vectorizer, AttentionOCR, CSVDataSource, Vocabulary, FlatDirectoryDataSource
 
 if __name__ == "__main__":
     voc = Vocabulary()
     vec = Vectorizer(vocabulary=voc, image_width=320, max_txt_length=42)
     model = AttentionOCR(vocabulary=voc, max_txt_length=42, focus_attention=True)
-    train_data = FlatDirectoryDataSource('scripts/train/*.jpg')
-    test_data = FlatDirectoryDataSource('scripts/test/*.jpg')
+    train_data = FlatDirectoryDataSource(vec, 'scripts/train/*.jpg', is_training=True)
+    test_data = FlatDirectoryDataSource(vec, 'scripts/test/*.jpg')
 
-    generator = BatchGenerator(vectorizer=vec, batch_size=64)
-    train_bgen = generator.flow_from_datasource(train_data)
-    test_bgen = generator.flow_from_datasource(test_data, is_training=False)
-    model.fit_generator(train_bgen, epochs=10, steps_per_epoch=10, validation_data=test_bgen)
+    train_gen = tf.data.Dataset.from_generator(train_data, output_types=(tf.float32, tf.float32, tf.float32, tf.float32))
+    test_gen = tf.data.Dataset.from_generator(test_data, output_types=(tf.float32, tf.float32, tf.float32, tf.float32))
 
-    # model.load('model.h5')
+    model.fit_generator(train_gen, epochs=10, validation_data=test_gen, validate_every_steps=10)
+
     model.save('model.h5')
 
     for i in range(1):
