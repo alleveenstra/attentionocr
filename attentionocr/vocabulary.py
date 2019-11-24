@@ -17,6 +17,9 @@ class Vocabulary:
         self._character_index = dict([(char, i) for i, char in enumerate(self._characters)])
         self._character_reverse_index = dict((i, char) for char, i in self._character_index.items())
 
+    def is_special_character(self, char_idx):
+        return self._characters[char_idx] in [self.pad, self.sos, self.eos]
+
     def one_hot_encode(self, txt: str, length: int, sos: bool = False, eos: bool = True) -> np.ndarray:
         txt = list(txt)
         txt = txt[:length - int(sos) - int(eos)]

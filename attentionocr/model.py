@@ -1,6 +1,6 @@
 import datetime
 import os
-from typing import List
+from typing import List, Tuple
 
 import cv2
 import numpy as np
@@ -73,34 +73,45 @@ class AttentionOCR:
             pbar = tqdm(range(steps_per_epoch))
             pbar.set_description("Epoch %03d / %03d " % (epoch, epochs))
             for step in pbar:
-                x, y_true, attention_focus = next(generator)
-                with tf.GradientTape() as tape:
-                    predictions, attention_weights = self._training_model(x)
-                    if self._focus_attention:
-                        loss = metrics.fan_loss(y_true, predictions, attention_weights, attention_focus)
-                    else:
-                        loss = metrics.masked_loss(y_true, predictions)
-                    with self.tensorboard_writer.as_default():
-                        tf.summary.scalar('train_loss', loss.numpy(), step=self.optimizer.iterations)
-                variables = self._training_model.trainable_variables
-                gradients = tape.gradient(loss, variables)
-                self.optimizer.apply_gradients(zip(gradients, variables))
+                loss = self._training_step(generator)
                 if step % validate_every_steps == 0 and validation_data is not None:
-                    # determine the real test accuracy using the inference model
-                    x, y_true, attention_focus = next(validation_data)
-                    y_pred = self._inference_model(x)
-                    accuracy = metrics.masked_accuracy(y_true, y_pred)
-                    with self.tensorboard_writer.as_default():
-                        tf.summary.scalar('accuracy', accuracy, step=self.optimizer.iterations)
-                    # determine the test loss using the training model
-                    predictions, attention_weights = self._training_model(x)
-                    if self._focus_attention:
-                        test_loss = metrics.fan_loss(y_true, predictions, attention_weights, attention_focus)
-                    else:
-                        test_loss = metrics.masked_loss(y_true, predictions)
-                    with self.tensorboard_writer.as_default():
-                        tf.summary.scalar('test_loss', test_loss.numpy(), step=self.optimizer.iterations)
-                pbar.set_postfix({"test accuracy": "%.4f" % accuracy, "test loss": test_loss.numpy(), "loss": "%.4f" % loss.numpy()})
+                    accuracy, test_loss = self._testing_step(validation_data)
+                pbar.set_postfix({"test accuracy": "%.4f" % accuracy, "test loss": test_loss, "training loss": "%.4f" % loss})
+
+    def _training_step(self, generator) -> float:
+        x, y_true, attention_focus = next(generator)
+        with tf.GradientTape() as tape:
+            predictions, attention_weights = self._training_model(x)
+            loss = self._apply_loss(y_true, predictions, attention_focus, attention_weights)
+            self._update_tensorboard(train_loss=loss)
+        variables = self._training_model.trainable_variables
+        gradients = tape.gradient(loss, variables)
+        self.optimizer.apply_gradients(zip(gradients, variables))
+        return loss.numpy()
+
+    def _testing_step(self, validation_data) -> Tuple[float, float]:
+        # determine the real test accuracy using the inference model
+        x, y_true, attention_focus = next(validation_data)
+        y_pred = self._inference_model(x)
+        accuracy = metrics.masked_accuracy(y_true, y_pred)
+        # determine the test loss using the training model
+        predictions, attention_weights = self._training_model(x)
+        test_loss = self._apply_loss(y_true, predictions, attention_focus, attention_weights)
+        # Update the tensorboards
+        self._update_tensorboard(test_loss=test_loss.numpy(), accuracy=accuracy)
+        return accuracy, test_loss.numpy()
+
+    def _apply_loss(self, y_true, y_pred, attention_true, attention_weights) -> tf.Tensor:
+        if self._focus_attention:
+            loss = metrics.fan_loss(y_true, y_pred, attention_weights, attention_true)
+        else:
+            loss = metrics.masked_loss(y_true, y_pred)
+        return loss
+
+    def _update_tensorboard(self, **kwargs):
+        with self.tensorboard_writer.as_default():
+            for name in kwargs:
+                tf.summary.scalar(name, kwargs[name], step=self.optimizer.iterations)
 
     def save(self, filepath) -> None:
         self._training_model.save_weights(filepath=filepath)
@@ -121,10 +132,9 @@ class AttentionOCR:
             texts.append(self._vocabulary.one_hot_decode(y_pred, self._max_txt_length))
         return texts
 
-    def visualise(self, images) -> List[str]:
+    def visualise(self, images):
         K.set_learning_phase(0)
-        texts = []
-        for image in images[:1]:
+        for image in images:
             input_image = np.expand_dims(image, axis=0)
 
             decoder_input = np.zeros((1, 1, len(self._vocabulary)))
@@ -135,12 +145,10 @@ class AttentionOCR:
 
             step_size = float(image.shape[1]) / attention.shape[-1]
             for index, char_idx in enumerate(np.argmax(y_pred, axis=-1)[0]):
-                if char_idx < 3:  # TODO magic value for PAD, EOS, SOS
+                if self._vocabulary.is_special_character(char_idx):
                     break
                 heatmap = np.zeros(image.shape)
                 for location, strength in enumerate(attention[0, index, :]):
                     heatmap[:, int(location * step_size) : int((location + 1) * step_size)] = strength * 255.0
                 filtered_image = (image + 1.0) * 127.5 * 0.4 + heatmap * 0.6
                 cv2.imwrite('out/%s-%d-%s.png' % (text, index, text[index]), filtered_image)
-
-        return texts
