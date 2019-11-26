@@ -3,7 +3,7 @@ from typing import Tuple
 
 import tensorflow as tf
 from tensorflow.keras import Input, Sequential
-from tensorflow.keras.layers import Dropout, MaxPool2D, Conv2D, LSTM, BatchNormalization, Dense
+from tensorflow.keras.layers import Bidirectional, Concatenate, Dropout, MaxPool2D, Conv2D, LSTM, BatchNormalization, Dense
 
 
 class Encoder:
@@ -32,15 +32,19 @@ class Encoder:
     ]
 
     def __init__(self, units):
+        assert units % 2 == 0  # units must be even, because the encoder is bidirectional
         self.cnn = Sequential(self.layers)
-        self.lstm = LSTM(units, return_sequences=True, return_state=True)
+        self.lstm = Bidirectional(LSTM(units // 2, return_sequences=True, return_state=True))
         self.cnn_shape = None
 
     def __call__(self, encoder_input) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         out = self.cnn(encoder_input)
         out = tf.squeeze(out, axis=1)
         self.cnn_shape = out.shape
-        return self.lstm(out)
+        lstm, forward_h, forward_c, backward_h, backward_c = self.lstm(out)
+        state_h = Concatenate()([forward_h, backward_h])
+        state_c = Concatenate()([forward_c, backward_c])
+        return lstm, state_h, state_c
 
     @staticmethod
     def get_width(width):
@@ -53,9 +57,9 @@ class Encoder:
                 width = width - math.ceil(layer.kernel_size[1] / 2.0)
         return width
 
+
 class Attention:
     def __init__(self, units: int):
-        # https://papers.nips.cc/paper/7181-attention-is-all-you-need.pdf
         self.query_projection = Dense(units)
 
     def __call__(self, decoder_input, encoder_output) -> Tuple[tf.Tensor, tf.Tensor]:
