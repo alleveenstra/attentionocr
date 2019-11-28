@@ -79,19 +79,18 @@ class AttentionOCR:
                 self.stats["training loss"] = "%.4f" % loss
                 self.stats["iterations"] = self.optimizer.iterations.numpy()
                 if self.optimizer.iterations % validate_every_steps == 0 and validation_data is not None:
-                    accuracies, losses = [], []
+                    accuracies = []
                     for validation_batch in validation_data.batch(batch_size):
-                        accuracy, test_loss = self._testing_step(*validation_batch)
+                        accuracy = self._testing_step(*validation_batch)
                         accuracies.append(accuracy)
-                        losses.append(test_loss)
                     self.stats["test accuracy"] = np.mean(accuracies)
-                    self.stats["test loss"] = np.mean(losses)
                 pbar.set_postfix(self.stats)
+            self.save('snapshot-%d.h5' % epoch)
 
     def _training_step(self, x_image: np.ndarray, x_decoder: np.ndarray, y_true: np.ndarray, attention_true: np.ndarray) -> float:
         with tf.GradientTape() as tape:
             y_pred, attention_pred = self._training_model([x_image, x_decoder])
-            loss = self._apply_loss(y_true, y_pred, attention_true, attention_pred)
+            loss = self._calculate_loss(y_true, y_pred, attention_true, attention_pred)
             self._update_tensorboard(train_loss=loss)
         variables = self._training_model.trainable_variables
         gradients = tape.gradient(loss, variables)
@@ -99,17 +98,14 @@ class AttentionOCR:
         return loss.numpy()
 
     def _testing_step(self, x_image: np.ndarray, x_decoder: np.ndarray, y_true: np.ndarray, attention_true: np.ndarray) -> Tuple[float, float]:
-        # determine the real test accuracy using the inference model
+        # determine the test accuracy using the inference model
         y_pred = self._inference_model([x_image, x_decoder])
         accuracy = metrics.masked_accuracy(y_true, y_pred)
-        # determine the test loss using the training model
-        y_pred, attention_pred = self._training_model([x_image, x_decoder])
-        test_loss = self._apply_loss(y_true, y_pred, attention_true, attention_pred)
         # Update the tensorboards
-        self._update_tensorboard(test_loss=test_loss.numpy(), accuracy=accuracy)
-        return accuracy, test_loss.numpy()
+        self._update_tensorboard(accuracy=accuracy)
+        return accuracy
 
-    def _apply_loss(self, y_true, y_pred, attention_true, attention_weights) -> tf.Tensor:
+    def _calculate_loss(self, y_true, y_pred, attention_true, attention_weights) -> tf.Tensor:
         if self._focus_attention:
             loss = metrics.fan_loss(y_true, y_pred, attention_weights, attention_true)
         else:
