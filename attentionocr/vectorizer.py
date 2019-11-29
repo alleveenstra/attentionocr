@@ -1,6 +1,7 @@
 import json
 import math
 import os
+from functools import lru_cache
 from typing import Tuple
 
 import numpy as np
@@ -23,9 +24,11 @@ class Vectorizer:
         self._image_util = ImageUtil(image_height, image_width)
         self._transform = transform
 
+    @lru_cache
     def load_image(self, image) -> np.ndarray:
         return self._image_util.load(image)
 
+    @lru_cache
     def create_focus(self, filename) -> tf.Tensor:
         if not os.path.exists(filename):
             return -np.ones((self._max_txt_length, self._encoding_width))
@@ -45,6 +48,7 @@ class Vectorizer:
         q = tf.nn.softmax(q, axis=0)
         return q
 
+    @lru_cache
     def transform_text(self, target_text: str, is_training: bool = True) -> Tuple[np.ndarray, np.ndarray]:
 
         decoder_input_size = self._max_txt_length if is_training else 1
