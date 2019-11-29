@@ -4,6 +4,7 @@ import logging
 import traceback
 from glob import glob
 from functools import partial
+from typing import Optional
 
 from . import Vectorizer
 
@@ -16,9 +17,12 @@ def to_json(filename: str):
     return "%s.json" % pre
 
 
-def FlatDirectoryDataSource(vectorizer: Vectorizer, glob_pattern: str, is_training: bool = False):
+def FlatDirectoryDataSource(vectorizer: Vectorizer, glob_pattern: str, max_items: Optional[int] = None, is_training: bool = False):
     images = glob(glob_pattern)
     examples = [(os.path.basename(image_file).split('.')[0], image_file, to_json(image_file)) for image_file in images]
+    if max_items is not None:
+        random.shuffle(examples)
+        examples = examples[:max_items]
     return partial(examples_generator, examples=examples, vectorizer=vectorizer, is_training=is_training)
 
 

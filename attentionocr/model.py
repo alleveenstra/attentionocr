@@ -14,7 +14,7 @@ from attentionocr import metrics, Vocabulary, Encoder, Attention, Decoder, Decod
 
 class AttentionOCR:
 
-    def __init__(self, vocabulary: Vocabulary, max_txt_length: int = 42, optimizer=tf.optimizers.Nadam(), focus_attention: bool = True, units: int = 256):
+    def __init__(self, vocabulary: Vocabulary, max_txt_length: int = 42, optimizer=tf.keras.optimizers.Adam(), focus_attention: bool = True, units: int = 256):
         self._vocabulary = vocabulary
         self._max_txt_length = max_txt_length
         self._image_height = 32
@@ -69,7 +69,6 @@ class AttentionOCR:
         return tf.keras.Model([self._encoder_input, self._decoder_input], output)
 
     def fit_generator(self, generator, epochs: int = 1, batch_size: int = 64, validation_data=None, validate_every_steps: int = 20) -> None:
-        K.set_learning_phase(1)
         for epoch in range(epochs):
             batches = generator.batch(batch_size)
             pbar = tqdm(batches)
@@ -81,13 +80,14 @@ class AttentionOCR:
                 if self.optimizer.iterations % validate_every_steps == 0 and validation_data is not None:
                     accuracies = []
                     for validation_batch in validation_data.batch(batch_size):
-                        accuracy = self._testing_step(*validation_batch)
+                        accuracy = self._validation_step(*validation_batch)
                         accuracies.append(accuracy)
                     self.stats["test accuracy"] = np.mean(accuracies)
                 pbar.set_postfix(self.stats)
             self.save('snapshot-%d.h5' % epoch)
 
     def _training_step(self, x_image: np.ndarray, x_decoder: np.ndarray, y_true: np.ndarray, attention_true: np.ndarray) -> float:
+        K.set_learning_phase(1)
         with tf.GradientTape() as tape:
             y_pred, attention_pred = self._training_model([x_image, x_decoder])
             loss = self._calculate_loss(y_true, y_pred, attention_true, attention_pred)
@@ -97,7 +97,8 @@ class AttentionOCR:
         self.optimizer.apply_gradients(zip(gradients, variables))
         return loss.numpy()
 
-    def _testing_step(self, x_image: np.ndarray, x_decoder: np.ndarray, y_true: np.ndarray, attention_true: np.ndarray) -> Tuple[float, float]:
+    def _validation_step(self, x_image: np.ndarray, x_decoder: np.ndarray, y_true: np.ndarray, attention_true: np.ndarray) -> Tuple[float, float]:
+        K.set_learning_phase(0)
         # determine the test accuracy using the inference model
         y_pred = self._inference_model([x_image, x_decoder])
         accuracy = metrics.masked_accuracy(y_true, y_pred)
