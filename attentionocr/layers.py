@@ -26,7 +26,7 @@ class Encoder:
         Conv2D(512, (3, 3), padding='same', activation='relu', kernel_initializer='he_uniform'),
         MaxPool2D(pool_size=(2, 1), strides=(2, 1), padding='valid'),
 
-        Conv2D(1024, (2, 2), padding='valid', activation='relu', kernel_initializer='he_uniform'),
+        Conv2D(512, (2, 2), padding='valid', activation='relu', kernel_initializer='he_uniform'),
         BatchNormalization(),
         Dropout(rate=0.5)
     ]
