@@ -16,9 +16,7 @@ image_util = ImageUtil(32, 320)
 seq = iaa.SomeOf((0, 2), [
     iaa.Sharpen(alpha=(0, 1.0), lightness=(0.75, 1.5)),
     iaa.Emboss(alpha=(0, 1.0), strength=(0, 2.0)),
-    iaa.Dropout((0.01, 0.1)),
-    iaa.CoarseDropout((0.03, 0.15), size_percent=(0.02, 0.05)),
-    iaa.Invert(0.05, per_channel=True),
+    iaa.Invert(1.0),
     iaa.MotionBlur(k=15)
 ])
 
@@ -74,6 +72,7 @@ def generate_image(text: str, augment: bool) -> Tuple[np.array, str, list]:
 
 
 def synthetic_data_generator(vectorizer: Vectorizer, epoch_size: int = 1000, augment: bool = False, is_training: bool = False):
+
     def synthesize():
         for _ in range(epoch_size):
             image, text, character_positions = generate_image(random_string(randint(4, 20)), augment)
