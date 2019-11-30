@@ -50,8 +50,8 @@ def examples_generator(examples, vectorizer, is_training):
                 with open(focus_file) as f:
                     meta = json.load(f)
             focus = vectorizer.create_focus(meta)
-            decoder_input, decoder_output = vectorizer.transform_text(text, is_training)
-            yield image, decoder_input, decoder_output, focus
+            decoder_input, decoder_output, position = vectorizer.transform_text(text, is_training)
+            yield image, decoder_input, decoder_output, position, focus
         except Exception as err:
             LOG.warning(err)
             traceback.print_tb(err.__traceback__)

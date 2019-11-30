@@ -77,7 +77,7 @@ def synthetic_data_generator(vectorizer: Vectorizer, epoch_size: int = 1000, aug
         for _ in range(epoch_size):
             image, text, character_positions = generate_image(random_string(randint(4, 20)), augment)
             focus = vectorizer.create_focus(character_positions)
-            decoder_input, decoder_output = vectorizer.transform_text(text, is_training)
-            yield image, decoder_input, decoder_output, focus
+            decoder_input, decoder_output, position = vectorizer.transform_text(text, is_training)
+            yield image, decoder_input, decoder_output, position, focus
 
     return synthesize
