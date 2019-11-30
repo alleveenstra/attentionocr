@@ -41,7 +41,7 @@ class Vectorizer:
         focus = tf.nn.softmax(focus, axis=0)
         return focus
 
-    def transform_text(self, target_text: str, is_training: bool = True) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def transform_text(self, target_text: str, is_training: bool = True) -> Tuple[np.ndarray, np.ndarray]:
 
         decoder_input_size = self._max_txt_length if is_training else 1
         decoder_input = np.zeros((decoder_input_size, len(self._vocabulary)), dtype='float32')
@@ -62,7 +62,4 @@ class Vectorizer:
         # decoder output
         decoder_output[:, :] = self._vocabulary.one_hot_encode(target_text, decoder_output_size, eos=True)
 
-        position = np.linspace(0.0, 1.0, self._max_txt_length, dtype='float32')
-        position = np.expand_dims(position, axis=-1)
-
-        return decoder_input, decoder_output, position
+        return decoder_input, decoder_output
