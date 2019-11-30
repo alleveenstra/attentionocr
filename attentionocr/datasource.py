@@ -1,3 +1,4 @@
+import json
 import os
 import random
 import logging
@@ -44,7 +45,11 @@ def examples_generator(examples, vectorizer, is_training):
     for text, image_file, focus_file in examples:
         try:
             image = vectorizer.load_image(image_file)
-            focus = vectorizer.create_focus(focus_file)
+            meta = None
+            if os.path.exists(focus_file):
+                with open(focus_file) as f:
+                    meta = json.load(f)
+            focus = vectorizer.create_focus(meta)
             decoder_input, decoder_output = vectorizer.transform_text(text, is_training)
             yield image, decoder_input, decoder_output, focus
         except Exception as err:

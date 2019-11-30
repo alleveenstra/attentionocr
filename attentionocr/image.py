@@ -10,6 +10,10 @@ class ImageUtil:
 
     def load(self, filename: str) -> np.ndarray:
         image = cv2.imread(filename)
+        image = self.preprocess(image)
+        return image
+
+    def preprocess(self, image):
         image = self._scale_axis(image)
         image = self._grayscale(image)
         image = self._pad(image)

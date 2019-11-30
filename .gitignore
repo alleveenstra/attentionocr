@@ -3,6 +3,9 @@ train
 .idea
 logs
 venv
+fonts
+images
+snapshots
 out
 dataset
 /scripts/test

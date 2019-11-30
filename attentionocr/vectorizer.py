@@ -1,15 +1,12 @@
-import json
 import math
-import os
-from functools import lru_cache
-from typing import Tuple
+from typing import Tuple, Optional
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.layers import Conv2D, MaxPool2D
+from tensorflow.keras.layers import MaxPool2D
 
-from .layers import Encoder
 from .image import ImageUtil
+from .layers import Encoder
 from .vocabulary import Vocabulary
 
 
@@ -24,18 +21,14 @@ class Vectorizer:
         self._image_util = ImageUtil(image_height, image_width)
         self._transform = transform
 
-    @lru_cache()
     def load_image(self, image) -> np.ndarray:
         return self._image_util.load(image)
 
-    @lru_cache()
-    def create_focus(self, filename) -> tf.Tensor:
-        if not os.path.exists(filename):
+    def create_focus(self, character_positions: Optional[list]) -> tf.Tensor:
+        if character_positions is None:
             return -np.ones((self._max_txt_length, self._encoding_width))
-        with open(filename) as f:
-            meta = json.load(f)
-        q = np.zeros((self._max_txt_length, self._encoding_width))
-        for index, char in enumerate(meta):
+        focus = np.zeros((self._max_txt_length, self._encoding_width))
+        for index, char in enumerate(character_positions):
             x0 = char['x']
             x1 = x0 + char['width']
             for layer in Encoder.layers:
@@ -44,11 +37,10 @@ class Vectorizer:
                     x1 /= float(layer.pool_size[1])
             x0 = max(math.floor(x0), 0)
             x1 = min(math.ceil(x1), self._encoding_width)
-            q[index, x0:x1] = 10.0
-        q = tf.nn.softmax(q, axis=0)
-        return q
+            focus[index, x0:x1] = 10.0
+        focus = tf.nn.softmax(focus, axis=0)
+        return focus
 
-    @lru_cache()
     def transform_text(self, target_text: str, is_training: bool = True) -> Tuple[np.ndarray, np.ndarray]:
 
         decoder_input_size = self._max_txt_length if is_training else 1

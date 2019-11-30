@@ -84,7 +84,7 @@ class AttentionOCR:
                         accuracies.append(accuracy)
                     self.stats["test accuracy"] = np.mean(accuracies)
                 pbar.set_postfix(self.stats)
-            self.save('snapshot-%d.h5' % epoch)
+            self.save('snapshots/snapshot-%d.h5' % epoch)
 
     def _training_step(self, x_image: np.ndarray, x_decoder: np.ndarray, y_true: np.ndarray, attention_true: np.ndarray) -> float:
         K.set_learning_phase(1)

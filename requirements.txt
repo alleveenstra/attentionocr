@@ -2,3 +2,6 @@ tensorflow==2.0
 numpy
 opencv-python
 Pillow
+tqdm
+matplotlib
+imgaug
