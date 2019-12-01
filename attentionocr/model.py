@@ -45,7 +45,12 @@ class AttentionOCR:
     def build_training_model(self) -> tf.keras.Model:
         encoder_output, hidden_state, cell_state = self._encoder(self._encoder_input)
         initial_state = [hidden_state, cell_state]
-        context_vectors, attention_weights = self._attention(self._decoder_input, encoder_output)
+
+        batch_size = tf.shape(self._decoder_input)[0]
+        eye = tf.eye(self._max_txt_length, batch_shape=tf.expand_dims(batch_size, 0))
+        attention_input = tf.concat([self._decoder_input, eye], axis=2)
+
+        context_vectors, attention_weights = self._attention(attention_input, encoder_output)
         x = tf.concat([self._decoder_input, context_vectors], axis=2)
         decoder_output, _, _ = self._decoder(x, initial_state=initial_state)
         logits = self._output(decoder_output)
@@ -56,8 +61,12 @@ class AttentionOCR:
         attentions = []
         prediction = self._decoder_input
         encoder_output, hidden_state, cell_state = self._encoder(self._encoder_input)
+        batch_size = tf.shape(self._decoder_input)[0]
+        eye = tf.eye(self._max_txt_length, batch_shape=tf.expand_dims(batch_size, 0))
         for i in range(self._max_txt_length):
-            context_vectors, attention = self._attention(prediction, encoder_output)
+            position = tf.expand_dims(eye[:, :, i], axis=1)
+            attention_input = tf.concat([prediction, position], axis=2)
+            context_vectors, attention = self._attention(attention_input, encoder_output)
             attentions.append(attention)
             x = tf.concat([prediction, context_vectors], axis=2)
             decoder_output, hidden_state, cell_state = self._decoder(x, [hidden_state, cell_state])
@@ -87,6 +96,8 @@ class AttentionOCR:
             self.save('snapshots/snapshot-%d.h5' % epoch)
 
     def _training_step(self, x_image: np.ndarray, x_decoder: np.ndarray, y_true: np.ndarray, attention_true: np.ndarray) -> float:
+        if x_decoder.shape[1] == 1:
+            raise ValueError("Please provide training data during training (set is_training=True)")
         K.set_learning_phase(1)
         with tf.GradientTape() as tape:
             y_pred, attention_pred = self._training_model([x_image, x_decoder])
@@ -98,6 +109,8 @@ class AttentionOCR:
         return loss.numpy()
 
     def _validation_step(self, x_image: np.ndarray, x_decoder: np.ndarray, y_true: np.ndarray, attention_true: np.ndarray) -> Tuple[float, float]:
+        if x_decoder.shape[1] != 1:
+            raise ValueError("Please provide validation data (set is_training=False)")
         K.set_learning_phase(0)
         # determine the test accuracy using the inference model
         y_pred = self._inference_model([x_image, x_decoder])
@@ -134,6 +147,7 @@ class AttentionOCR:
             decoder_input[0, :, :] = self._vocabulary.one_hot_encode('', 1, sos=True, eos=False)
 
             y_pred = self._inference_model.predict([image, decoder_input])
+            y_pred = np.squeeze(y_pred, axis=0)  # squeeze the batch index out
             texts.append(self._vocabulary.one_hot_decode(y_pred, self._max_txt_length))
         return texts
 
@@ -146,10 +160,11 @@ class AttentionOCR:
             decoder_input[0, :, :] = self._vocabulary.one_hot_encode('', 1, sos=True, eos=False)
 
             y_pred, attention = self._visualisation_model.predict([input_image, decoder_input])
+            y_pred = np.squeeze(y_pred, axis=0)
             text = self._vocabulary.one_hot_decode(y_pred, self._max_txt_length)
 
             step_size = float(image.shape[1]) / attention.shape[-1]
-            for index, char_idx in enumerate(np.argmax(y_pred, axis=-1)[0]):
+            for index, char_idx in enumerate(np.argmax(y_pred, axis=-1)):
                 if self._vocabulary.is_special_character(char_idx):
                     break
                 heatmap = np.zeros(image.shape)

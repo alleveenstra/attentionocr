@@ -16,19 +16,19 @@ class Encoder:
         Conv2D(128, (3, 3), padding='same', activation='relu', kernel_initializer='he_uniform'),
         MaxPool2D(pool_size=(2, 2), strides=(2, 2), padding='valid'),
 
-        Conv2D(128, (3, 3), padding='same', activation='relu', kernel_initializer='he_uniform'),
+        Conv2D(256, (3, 3), padding='same', activation='relu', kernel_initializer='he_uniform'),
         BatchNormalization(),
-        Conv2D(128, (3, 3), padding='same', activation='relu', kernel_initializer='he_uniform'),
+        Conv2D(256, (3, 3), padding='same', activation='relu', kernel_initializer='he_uniform'),
         MaxPool2D(pool_size=(2, 1), strides=(2, 1), padding='valid'),
 
-        Conv2D(128, (3, 3), padding='same', activation='relu', kernel_initializer='he_uniform'),
+        Conv2D(512, (3, 3), padding='same', activation='relu', kernel_initializer='he_uniform'),
         BatchNormalization(),
-        Conv2D(128, (3, 3), padding='same', activation='relu', kernel_initializer='he_uniform'),
+        Conv2D(512, (3, 3), padding='same', activation='relu', kernel_initializer='he_uniform'),
         MaxPool2D(pool_size=(2, 1), strides=(2, 1), padding='valid'),
 
-        Conv2D(128, (2, 2), padding='valid', activation='relu', kernel_initializer='he_uniform'),
+        Conv2D(512, (2, 2), padding='valid', activation='relu', kernel_initializer='he_uniform'),
         BatchNormalization(),
-        # Dropout(rate=0.5)
+        Dropout(rate=0.5)
     ]
 
     def __init__(self, units):

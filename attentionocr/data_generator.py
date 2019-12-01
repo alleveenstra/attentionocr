@@ -1,7 +1,7 @@
 import string
 from glob import glob
 from random import randint, choice
-from typing import Tuple
+from typing import Tuple, Optional
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -17,7 +17,7 @@ seq = iaa.SomeOf((0, 2), [
     iaa.Sharpen(alpha=(0, 1.0), lightness=(0.75, 1.5)),
     iaa.Emboss(alpha=(0, 1.0), strength=(0, 2.0)),
     iaa.Invert(1.0),
-    iaa.MotionBlur(k=15)
+    iaa.MotionBlur(k=10)
 ])
 
 
@@ -31,7 +31,9 @@ def rand_pad():
     return randint(5, 35), randint(5, 35), randint(0, 3), randint(10, 13)
 
 
-def random_string(length):
+def random_string(length: Optional[int] = None):
+    if length is None:
+        length = randint(4, 20)
     letters = list(string.ascii_uppercase) + default_vocabulary
     return (''.join(choice(letters) for _ in range(length))).strip()
 
@@ -75,7 +77,7 @@ def synthetic_data_generator(vectorizer: Vectorizer, epoch_size: int = 1000, aug
 
     def synthesize():
         for _ in range(epoch_size):
-            image, text, character_positions = generate_image(random_string(randint(4, 20)), augment)
+            image, text, character_positions = generate_image(random_string(), augment)
             focus = vectorizer.create_focus(character_positions)
             decoder_input, decoder_output = vectorizer.transform_text(text, is_training)
             yield image, decoder_input, decoder_output, focus
