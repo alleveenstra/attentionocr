@@ -7,6 +7,7 @@ fonts
 images
 snapshots
 out
+data
 dataset
 /scripts/test
 /scripts/train
