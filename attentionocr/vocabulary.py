@@ -39,7 +39,7 @@ class Vocabulary:
 
     def one_hot_decode(self, one_hot: np.ndarray, max_length: int) -> str:
         text = ''
-        for sample_index in np.argmax(one_hot, axis=-1)[0]:
+        for sample_index in np.argmax(one_hot, axis=-1):
             sample = self._character_reverse_index[sample_index]
             if sample == self.eos or sample == self.pad or len(text) > max_length:
                 break

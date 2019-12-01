@@ -147,6 +147,7 @@ class AttentionOCR:
             decoder_input[0, :, :] = self._vocabulary.one_hot_encode('', 1, sos=True, eos=False)
 
             y_pred = self._inference_model.predict([image, decoder_input])
+            y_pred = np.squeeze(y_pred, axis=0)  # squeeze the batch index out
             texts.append(self._vocabulary.one_hot_decode(y_pred, self._max_txt_length))
         return texts
 
@@ -159,10 +160,11 @@ class AttentionOCR:
             decoder_input[0, :, :] = self._vocabulary.one_hot_encode('', 1, sos=True, eos=False)
 
             y_pred, attention = self._visualisation_model.predict([input_image, decoder_input])
+            y_pred = np.squeeze(y_pred, axis=0)
             text = self._vocabulary.one_hot_decode(y_pred, self._max_txt_length)
 
             step_size = float(image.shape[1]) / attention.shape[-1]
-            for index, char_idx in enumerate(np.argmax(y_pred, axis=-1)[0]):
+            for index, char_idx in enumerate(np.argmax(y_pred, axis=-1)):
                 if self._vocabulary.is_special_character(char_idx):
                     break
                 heatmap = np.zeros(image.shape)
