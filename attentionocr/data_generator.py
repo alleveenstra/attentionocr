@@ -57,10 +57,15 @@ def generate_image(text: str, augment: bool) -> Tuple[np.array, str, list]:
     height = left_pad + txt_width + right_pad
     width = top_pad + txt_height + bottom_pad
     image = random_background(height, width)
+
     stroke_sat = int(np.array(image).mean())
     sat = int((stroke_sat + 127) % 255)
-    canvas = ImageDraw.Draw(image)
-    canvas.text((left_pad, top_pad), text, fill=(sat, sat, sat), font=font, stroke_width=2, stroke_fill=(stroke_sat, stroke_sat, stroke_sat))
+    mask = Image.new('L', (height, width))
+    canvas = ImageDraw.Draw(mask)
+    canvas.text((left_pad, top_pad), text, fill=sat, font=font, stroke_fill=stroke_sat, stroke_width=2)
+    mask = mask.rotate(randint(int(-10+(txt_width/32)), int(10-(txt_width/32))))
+    image.paste(mask, (0, 0), mask)
+
     image = np.array(image)
     if augment:
         image = seq.augment_image(image)
