@@ -34,6 +34,19 @@ def rand_pad():
 def random_string(length: Optional[int] = None):
     if length is None:
         length = randint(4, 20)
+
+    if randint(0, 1) == 0:
+        random_file = choice(list(glob('texts/*.txt')))
+        with open(random_file, 'r') as f:
+            random_txt = f.readlines()
+        random_txt = choice(random_txt)
+        end = len(random_txt) - length
+        if end > 0:
+            start = randint(0, end)
+            random_txt = random_txt[start:start+length].strip()
+            if len(random_txt) > 1:
+                return random_txt
+
     letters = list(string.ascii_uppercase) + default_vocabulary
     return (''.join(choice(letters) for _ in range(length))).strip()
 

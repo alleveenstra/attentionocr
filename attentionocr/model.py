@@ -43,8 +43,7 @@ class AttentionOCR:
         self._visualisation_model = self.build_inference_model(include_attention=True)
 
     def build_training_model(self) -> tf.keras.Model:
-        encoder_output, hidden_state, cell_state = self._encoder(self._encoder_input)
-        initial_state = [hidden_state, cell_state]
+        encoder_output = self._encoder(self._encoder_input)
 
         batch_size = tf.shape(self._decoder_input)[0]
         eye = tf.eye(self._max_txt_length, batch_shape=tf.expand_dims(batch_size, 0))
@@ -52,7 +51,7 @@ class AttentionOCR:
 
         context_vectors, attention_weights = self._attention(attention_input, encoder_output)
         x = tf.concat([self._decoder_input, context_vectors], axis=2)
-        decoder_output, _, _ = self._decoder(x, initial_state=initial_state)
+        decoder_output, _, _ = self._decoder(x, initial_state=None)
         logits = self._output(decoder_output)
         return tf.keras.Model([self._encoder_input, self._decoder_input], [logits, attention_weights])
 
@@ -60,16 +59,18 @@ class AttentionOCR:
         predictions = []
         attentions = []
         prediction = self._decoder_input
-        encoder_output, hidden_state, cell_state = self._encoder(self._encoder_input)
+        encoder_output = self._encoder(self._encoder_input)
         batch_size = tf.shape(self._decoder_input)[0]
         eye = tf.eye(self._max_txt_length, batch_shape=tf.expand_dims(batch_size, 0))
+        initial_state = None
         for i in range(self._max_txt_length):
             position = tf.expand_dims(eye[:, :, i], axis=1)
             attention_input = tf.concat([prediction, position], axis=2)
             context_vectors, attention = self._attention(attention_input, encoder_output)
             attentions.append(attention)
             x = tf.concat([prediction, context_vectors], axis=2)
-            decoder_output, hidden_state, cell_state = self._decoder(x, [hidden_state, cell_state])
+            decoder_output, hidden_state, cell_state = self._decoder(x, initial_state=initial_state)
+            initial_state = [hidden_state, cell_state]
             prediction = self._output(decoder_output)
             predictions.append(prediction)
         predictions = tf.concat(predictions, axis=1)

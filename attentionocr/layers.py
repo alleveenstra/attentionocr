@@ -34,17 +34,15 @@ class Encoder:
     def __init__(self, units):
         assert units % 2 == 0  # units must be even, because the encoder is bidirectional
         self.cnn = Sequential(self.layers)
-        self.lstm = Bidirectional(LSTM(units // 2, return_sequences=True, return_state=True))
+        self.lstm = Bidirectional(LSTM(units // 2, return_sequences=True))
         self.cnn_shape = None
 
-    def __call__(self, encoder_input) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+    def __call__(self, encoder_input) -> tf.Tensor:
         out = self.cnn(encoder_input)
         out = tf.squeeze(out, axis=1)
         self.cnn_shape = out.shape
-        lstm, forward_h, forward_c, backward_h, backward_c = self.lstm(out)
-        state_h = Concatenate()([forward_h, backward_h])
-        state_c = Concatenate()([forward_c, backward_c])
-        return lstm, state_h, state_c
+        lstm = self.lstm(out)
+        return lstm
 
     @staticmethod
     def get_width(width):
@@ -82,7 +80,9 @@ class Decoder:
 
 class DecoderOutput:
     def __init__(self, vocab_size):
+        self.hidden = Dense(256, activation='relu')
         self.dense = Dense(vocab_size, activation='softmax')
 
     def __call__(self, decoder_output) -> tf.Tensor:
-        return self.dense(decoder_output)
+        net = self.hidden(decoder_output)
+        return self.dense(net)
