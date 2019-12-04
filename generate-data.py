@@ -25,4 +25,5 @@ if __name__ == "__main__":
         os.mkdir("data/")
 
     generate_set('data', 'train', 1_000_000, True)
+    generate_set('data', 'validation', 256, False)
     generate_set('data', 'test', 256, False)
