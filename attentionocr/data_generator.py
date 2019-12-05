@@ -34,6 +34,19 @@ def rand_pad():
 def random_string(length: Optional[int] = None):
     if length is None:
         length = randint(4, 20)
+
+    if randint(0, 1) == 0:
+        random_file = choice(list(glob('texts/*.txt')))
+        with open(random_file, 'r') as f:
+            random_txt = f.readlines()
+        random_txt = choice(random_txt)
+        end = len(random_txt) - length
+        if end > 0:
+            start = randint(0, end)
+            random_txt = random_txt[start:start+length].strip()
+            if len(random_txt) > 1:
+                return random_txt
+
     letters = list(string.ascii_uppercase) + default_vocabulary
     return (''.join(choice(letters) for _ in range(length))).strip()
 
@@ -57,10 +70,15 @@ def generate_image(text: str, augment: bool) -> Tuple[np.array, str, list]:
     height = left_pad + txt_width + right_pad
     width = top_pad + txt_height + bottom_pad
     image = random_background(height, width)
+
     stroke_sat = int(np.array(image).mean())
     sat = int((stroke_sat + 127) % 255)
-    canvas = ImageDraw.Draw(image)
-    canvas.text((left_pad, top_pad), text, fill=(sat, sat, sat), font=font, stroke_width=2, stroke_fill=(stroke_sat, stroke_sat, stroke_sat))
+    mask = Image.new('L', (height, width))
+    canvas = ImageDraw.Draw(mask)
+    canvas.text((left_pad, top_pad), text, fill=sat, font=font, stroke_fill=stroke_sat, stroke_width=2)
+    mask = mask.rotate(randint(int(-10+(txt_width/32)), int(10-(txt_width/32))))
+    image.paste(mask, (0, 0), mask)
+
     image = np.array(image)
     if augment:
         image = seq.augment_image(image)

@@ -2,10 +2,10 @@
 
 A clear and maintainable implementation of Attention OCR in Tensorflow 2.0.
 
-This sequence to sequence OCR model aims to provide a clear and maintainable implementation of Attention OCR.
-Some of the open source models are implemented in a way that readability suffers.
-Also, these implementations are in older Tensorflow versions and its API changes throughout its many versions.
-This makes some of the OCR implementations hard to use and maintain.
+This sequence to sequence OCR model aims to provide a clear and maintainable implementation of attention based OCR.
+
+Please note that this is currently a work in progress.
+Documentation is missing, but will be added when the code is stable.
 
 This repository depends upon the following:
 
