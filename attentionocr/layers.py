@@ -2,8 +2,7 @@ import math
 from typing import Tuple
 
 import tensorflow as tf
-from tensorflow.keras import Input, Sequential
-from tensorflow.keras.layers import Bidirectional, Concatenate, Dropout, MaxPool2D, Conv2D, LSTM, BatchNormalization, Dense
+from tensorflow.keras.layers import Bidirectional, Dropout, MaxPool2D, Conv2D, LSTM, BatchNormalization, Dense
 
 
 class Encoder:
@@ -31,6 +30,12 @@ class Encoder:
         Dropout(rate=0.5)
     ]
 
+    residual_layers = [
+        Conv2D(128, (1, 1), padding='same'),
+        Conv2D(256, (1, 1), padding='same'),
+        Conv2D(512, (1, 1), padding='same')
+    ]
+
     def __init__(self, units):
         assert units % 2 == 0  # units must be even, because the encoder is bidirectional
         self.lstm = Bidirectional(LSTM(units // 2, return_sequences=True))
@@ -39,10 +44,11 @@ class Encoder:
     def __call__(self, encoder_input) -> tf.Tensor:
         x = encoder_input
         residual = None
+        residual_layers = iter(self.residual_layers)
         for layer in self.layers:
             if type(layer) == MaxPool2D:
                 if residual is not None:
-                    residual = Conv2D(x.shape[-1], (1, 1), padding='same')(residual)
+                    residual = next(residual_layers)(residual)
                     x = residual + x
                     x = tf.nn.relu(x)
                 x = layer(x)
