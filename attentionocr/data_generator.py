@@ -76,7 +76,11 @@ def generate_image(text: str, augment: bool) -> Tuple[np.array, str, list]:
     mask = Image.new('L', (height, width))
     canvas = ImageDraw.Draw(mask)
     canvas.text((left_pad, top_pad), text, fill=sat, font=font, stroke_fill=stroke_sat, stroke_width=2)
-    mask = mask.rotate(randint(int(-10+(txt_width/32)), int(10-(txt_width/32))))
+    lower = int(-10 + (txt_width / 32))
+    upper = int(10 - (txt_width / 32))
+    if upper < lower:
+        upper = lower
+    mask = mask.rotate(randint(lower, upper))
     image.paste(mask, (0, 0), mask)
 
     image = np.array(image)
