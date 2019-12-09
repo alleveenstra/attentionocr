@@ -33,13 +33,23 @@ class Encoder:
 
     def __init__(self, units):
         assert units % 2 == 0  # units must be even, because the encoder is bidirectional
-        self.cnn = Sequential(self.layers)
         self.lstm = Bidirectional(LSTM(units // 2, return_sequences=True))
         self.cnn_shape = None
 
     def __call__(self, encoder_input) -> tf.Tensor:
-        out = self.cnn(encoder_input)
-        out = tf.squeeze(out, axis=1)
+        x = encoder_input
+        residual = None
+        for layer in self.layers:
+            if type(layer) == MaxPool2D:
+                if residual is not None:
+                    residual = Conv2D(x.shape[-1], (1, 1), padding='same')(residual)
+                    x = residual + x
+                    x = tf.nn.relu(x)
+                x = layer(x)
+                residual = x
+            else:
+                x = layer(x)
+        out = tf.squeeze(x, axis=1)
         self.cnn_shape = out.shape
         lstm = self.lstm(out)
         return lstm
