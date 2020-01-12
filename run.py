@@ -6,10 +6,10 @@ if __name__ == "__main__":
     vec = Vectorizer(vocabulary=voc, image_width=320, max_txt_length=42)
     model = AttentionOCR(vocabulary=voc, max_txt_length=42)
 
-    # train_data = synthetic_data_generator(vec, epoch_size=8, augment=False, is_training=True)
-    # validation_data = synthetic_data_generator(vec, epoch_size=8, augment=False)
-    train_data = CSVDataSource(vec, 'data/', 'train.txt', is_training=True)
-    validation_data = CSVDataSource(vec, 'data/', 'validation.txt')
+    train_data = synthetic_data_generator(vec, epoch_size=8, augment=False, is_training=True)
+    validation_data = synthetic_data_generator(vec, epoch_size=8, augment=False)
+    # train_data = CSVDataSource(vec, 'data/', 'train.txt', is_training=True)
+    # validation_data = CSVDataSource(vec, 'data/', 'validation.txt')
 
     train_gen = tf.data.Dataset.from_generator(train_data, output_types=(tf.float32, tf.float32, tf.float32))
     validation_gen = tf.data.Dataset.from_generator(validation_data, output_types=(tf.float32, tf.float32, tf.float32))

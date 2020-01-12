@@ -63,7 +63,7 @@ def random_background(height, width):
     return original.crop((left, top, right, bottom))
 
 
-def generate_image(text: str, augment: bool) -> Tuple[np.array, str, list]:
+def generate_image(text: str, augment: bool) -> Tuple[np.array, str]:
     font = random_font()
     txt_width, txt_height = font.getsize(text)
     left_pad, right_pad, top_pad, bottom_pad = rand_pad()

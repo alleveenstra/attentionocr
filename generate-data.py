@@ -13,7 +13,7 @@ def generate_set(directory: str, name: str, size: int, augment: bool):
     with open(f"{directory}/{name}.txt", 'w') as fp:
         for item in tqdm(range(size), desc=name):
             txt = random_string()
-            img, txt, _ = generate_image(txt, augment=augment)
+            img, txt = generate_image(txt, augment=augment)
             img = np.squeeze(img, axis=-1)
             img = Image.fromarray(np.uint8((img + 1.0) * 127.5))
             img.save(f'{directory}/{name}/{item}.jpg')
