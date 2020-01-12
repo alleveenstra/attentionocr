@@ -17,8 +17,6 @@ This repository depends upon the following:
 This work is based on the following work:
 
 *  [Attention Is All You Need](https://arxiv.org/abs/1706.03762)
-*  [Focusing Attention: Towards Accurate Text Recognition in Natural Images
-](https://arxiv.org/abs/1709.02054)
 
 ## To do
 
