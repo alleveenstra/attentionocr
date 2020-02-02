@@ -1,5 +1,5 @@
 tensorflow==2.0.1
-numpy
+numpy==1.17.4
 opencv-python
 Pillow
 tqdm

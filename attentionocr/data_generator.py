@@ -63,7 +63,7 @@ def random_background(height, width):
     return original.crop((left, top, right, bottom))
 
 
-def generate_image(text: str, augment: bool) -> Tuple[np.array, str, list]:
+def generate_image(text: str, augment: bool) -> Tuple[np.array, str]:
     font = random_font()
     txt_width, txt_height = font.getsize(text)
     left_pad, right_pad, top_pad, bottom_pad = rand_pad()
@@ -86,22 +86,16 @@ def generate_image(text: str, augment: bool) -> Tuple[np.array, str, list]:
     image = np.array(image)
     if augment:
         image = seq.augment_image(image)
-    metadata = []
-    for idx, char in enumerate(text):
-        char_width, _ = font.getmask(char).size
-        x_offset, _ = font.getmask(text[:idx]).size
-        metadata.append({'char': char.lower(), 'x': left_pad + x_offset, 'width': char_width})
     image = image_util.preprocess(image)
-    return image, text.lower(), metadata
+    return image, text.lower()
 
 
 def synthetic_data_generator(vectorizer: Vectorizer, epoch_size: int = 1000, augment: bool = False, is_training: bool = False):
 
     def synthesize():
         for _ in range(epoch_size):
-            image, text, character_positions = generate_image(random_string(), augment)
-            focus = vectorizer.create_focus(character_positions)
+            image, text = generate_image(random_string(), augment)
             decoder_input, decoder_output = vectorizer.transform_text(text, is_training)
-            yield image, decoder_input, decoder_output, focus
+            yield image, decoder_input, decoder_output
 
     return synthesize

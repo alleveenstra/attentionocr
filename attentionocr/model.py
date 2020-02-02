@@ -14,13 +14,12 @@ from attentionocr import metrics, Vocabulary, Encoder, Attention, Decoder, Decod
 
 class AttentionOCR:
 
-    def __init__(self, vocabulary: Vocabulary, max_txt_length: int = 42, optimizer=tf.keras.optimizers.Adam(), focus_attention: bool = True, units: int = 256):
+    def __init__(self, vocabulary: Vocabulary, max_txt_length: int = 42, optimizer=tf.keras.optimizers.Adam(), units: int = 256):
         self._vocabulary = vocabulary
         self._max_txt_length = max_txt_length
         self._image_height = 32
         self._image_width = 320
         self._units = units
-        self._focus_attention = focus_attention
 
         self.optimizer = optimizer
 
@@ -53,7 +52,7 @@ class AttentionOCR:
         x = tf.concat([self._decoder_input, context_vectors], axis=2)
         decoder_output, _, _ = self._decoder(x, initial_state=None)
         logits = self._output(decoder_output)
-        return tf.keras.Model([self._encoder_input, self._decoder_input], [logits, attention_weights])
+        return tf.keras.Model([self._encoder_input, self._decoder_input], [logits])
 
     def build_inference_model(self, include_attention: bool = False) -> tf.keras.Model:
         predictions = []
@@ -96,20 +95,20 @@ class AttentionOCR:
                 pbar.set_postfix(self.stats)
             self.save('snapshots/snapshot-%d.h5' % epoch)
 
-    def _training_step(self, x_image: np.ndarray, x_decoder: np.ndarray, y_true: np.ndarray, attention_true: np.ndarray) -> float:
+    def _training_step(self, x_image: np.ndarray, x_decoder: np.ndarray, y_true: np.ndarray) -> float:
         if x_decoder.shape[1] == 1:
             raise ValueError("Please provide training data during training (set is_training=True)")
         K.set_learning_phase(1)
         with tf.GradientTape() as tape:
-            y_pred, attention_pred = self._training_model([x_image, x_decoder])
-            loss = self._calculate_loss(y_true, y_pred, attention_true, attention_pred)
+            y_pred = self._training_model([x_image, x_decoder])
+            loss = self._calculate_loss(y_true, y_pred)
             self._update_tensorboard(train_loss=loss)
         variables = self._training_model.trainable_variables
         gradients = tape.gradient(loss, variables)
         self.optimizer.apply_gradients(zip(gradients, variables))
         return loss.numpy()
 
-    def _validation_step(self, x_image: np.ndarray, x_decoder: np.ndarray, y_true: np.ndarray, attention_true: np.ndarray) -> Tuple[float, float]:
+    def _validation_step(self, x_image: np.ndarray, x_decoder: np.ndarray, y_true: np.ndarray) -> Tuple[float, float]:
         if x_decoder.shape[1] != 1:
             raise ValueError("Please provide validation data (set is_training=False)")
         K.set_learning_phase(0)
@@ -120,11 +119,8 @@ class AttentionOCR:
         self._update_tensorboard(accuracy=accuracy)
         return accuracy
 
-    def _calculate_loss(self, y_true, y_pred, attention_true, attention_weights) -> tf.Tensor:
-        if self._focus_attention:
-            loss = metrics.fan_loss(y_true, y_pred, attention_weights, attention_true)
-        else:
-            loss = metrics.masked_loss(y_true, y_pred)
+    def _calculate_loss(self, y_true, y_pred) -> tf.Tensor:
+        loss = metrics.masked_loss(y_true, y_pred)
         return loss
 
     def _update_tensorboard(self, **kwargs):
