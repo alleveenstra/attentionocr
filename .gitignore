@@ -6,8 +6,11 @@ venv
 fonts
 images
 snapshots
+synthetic/data/
+synthetic/fonts/
+synthetic/texts/
+synthetic/images/
 out
-data
 dataset
 /scripts/test
 /scripts/train

@@ -12,6 +12,30 @@ This repository depends upon the following:
 *  Tensorflow 2.0
 *  Python 3.6+
 
+## Training a model
+
+To train a model, first download the sources for generating synthetic data:
+
+```bash
+cd synthetic
+./download_data_sources.sh
+```
+
+Next, in this project's root folder, run the training script:
+
+```bash
+python3 run.py
+```
+
+This will run a test training run. 
+If everything went well, you'll find a file named "trained.h5" in your directory.
+To train a real model you should change the training parameters.
+See run.py its arguments to find out what is configurable.
+
+```bash
+python3 run.py --help
+```
+
 ## References
 
 This work is based on the following work:
