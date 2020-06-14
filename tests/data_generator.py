@@ -10,7 +10,7 @@ if __name__ == "__main__":
 
     string = random_string(randint(4, 20))
     print(string)
-    img, txt, meta = generate_image(string, True)
+    img, txt = generate_image(string, True)
     print(txt)
     img = np.squeeze(img, -1)
     imgplot = plt.imshow(img)

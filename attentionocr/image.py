@@ -35,7 +35,8 @@ class ImageUtil:
             image = cv2.resize(image, (self._image_width, self._image_height), interpolation=cv2.INTER_AREA)
         return image
 
-    def _grayscale(self, image: np.ndarray) -> np.ndarray:
+    @staticmethod
+    def _grayscale(image: np.ndarray) -> np.ndarray:
         image = (cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) / 127.5) - 1.0
         return image
 

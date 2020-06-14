@@ -1,12 +1,12 @@
 import datetime
 import os
-from typing import List, Tuple
+from typing import List
 
 import cv2
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras.backend as K
-from tensorflow.keras import Input, Sequential
+from tensorflow.keras import Input
 from tqdm import tqdm
 
 from attentionocr import metrics, Vocabulary, Encoder, Attention, Decoder, DecoderOutput
@@ -48,7 +48,7 @@ class AttentionOCR:
         eye = tf.eye(self._max_txt_length, batch_shape=tf.expand_dims(batch_size, 0))
         attention_input = tf.concat([self._decoder_input, eye], axis=2)
 
-        context_vectors, attention_weights = self._attention(attention_input, encoder_output)
+        context_vectors, _ = self._attention(attention_input, encoder_output)
         x = tf.concat([self._decoder_input, context_vectors], axis=2)
         decoder_output, _, _ = self._decoder(x, initial_state=None)
         logits = self._output(decoder_output)
@@ -108,7 +108,7 @@ class AttentionOCR:
         self.optimizer.apply_gradients(zip(gradients, variables))
         return loss.numpy()
 
-    def _validation_step(self, x_image: np.ndarray, x_decoder: np.ndarray, y_true: np.ndarray) -> Tuple[float, float]:
+    def _validation_step(self, x_image: np.ndarray, x_decoder: np.ndarray, y_true: np.ndarray) -> float:
         if x_decoder.shape[1] != 1:
             raise ValueError("Please provide validation data (set is_training=False)")
         K.set_learning_phase(0)
@@ -119,7 +119,8 @@ class AttentionOCR:
         self._update_tensorboard(accuracy=accuracy)
         return accuracy
 
-    def _calculate_loss(self, y_true, y_pred) -> tf.Tensor:
+    @staticmethod
+    def _calculate_loss(y_true, y_pred) -> tf.Tensor:
         loss = metrics.masked_loss(y_true, y_pred)
         return loss
 
